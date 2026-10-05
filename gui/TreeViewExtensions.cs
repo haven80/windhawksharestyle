@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace WindhawkShare.Gui;
 
-/// <summary>Nasconde la casella di spunta di singoli nodi (righe di nota, "caricamento...").</summary>
+/// <summary>Hides the checkbox of individual nodes (note rows, "loading...").</summary>
 internal static class TreeViewExtensions
 {
     private const int TVIF_HANDLE = 0x10;

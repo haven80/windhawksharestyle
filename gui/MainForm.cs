@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace WindhawkShare.Gui;
 
 /// <summary>
-/// Interfaccia grafica: solo uno strato sopra Exporter e Importer, la logica è la stessa del terminale.
+/// Graphical interface: just a layer over Exporter and Importer, same logic as the command line.
 /// </summary>
 internal sealed class MainForm : Form
 {
@@ -15,39 +15,41 @@ internal sealed class MainForm : Form
     private List<InstalledMod> _installed = new();
     private bool _updatingChecks;
 
-    // Esporta
+    // Export
     private readonly TreeView _exportTree = new() { CheckBoxes = true, Dock = DockStyle.Fill, HideSelection = false };
     private readonly TextBox _nameBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _authorBox = new() { Dock = DockStyle.Fill };
     private readonly TextBox _descriptionBox = new() { Dock = DockStyle.Fill };
-    private readonly Button _refreshButton = new() { Text = "Aggiorna elenco", AutoSize = true };
-    private readonly Button _saveButton = new() { Text = "Salva pacchetto...", AutoSize = true };
+    private readonly Button _refreshButton = new() { Text = "Refresh list", AutoSize = true };
+    private readonly Button _saveButton = new() { Text = "Save package...", AutoSize = true };
 
-    // Importa
-    private readonly Button _openButton = new() { Text = "Apri pacchetto...", AutoSize = true };
+    // Import
+    private readonly Button _openButton = new() { Text = "Open package...", AutoSize = true };
     private readonly CheckBox _exactVersionBox = new()
     {
-        Text = "Installa la versione indicata nel pacchetto (invece dell'ultima)",
+        Text = "Install the version listed in the package (instead of the latest)",
         AutoSize = true,
         Margin = new Padding(12, 6, 3, 3),
     };
-    private readonly Label _packageInfo = new() { AutoSize = true, Text = "Nessun pacchetto aperto.", Padding = new Padding(0, 4, 0, 4) };
+    private readonly Label _packageInfo = new() { AutoSize = true, Text = "No package open.", Padding = new Padding(0, 4, 0, 4) };
     private readonly TreeView _importTree = new() { CheckBoxes = true, Dock = DockStyle.Fill };
-    private readonly Button _applyButton = new() { Text = "Applica", AutoSize = true, Enabled = false };
+    private readonly Button _applyButton = new() { Text = "Apply", AutoSize = true, Enabled = false };
     private readonly TextBox _log = new()
     {
         Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill,
     };
 
     private readonly TabControl _tabs = new() { Dock = DockStyle.Fill };
-    private readonly ToolStripStatusLabel _status = new() { Text = "Pronto" };
+    private readonly ToolStripStatusLabel _status = new() { Text = "Ready" };
 
     private SetupPackage? _package;
     private string? _packagePath;
+    private readonly string? _packageToOpen;
 
-    public MainForm()
+    public MainForm(string? packageToOpen = null)
     {
-        Text = "Windhawk Share";
+        _packageToOpen = packageToOpen;
+        Text = Importer.IsElevated() ? "Windhawk Share (administrator)" : "Windhawk Share";
         Font = new Font("Segoe UI", 9F);
         AutoScaleMode = AutoScaleMode.Font;
         StartPosition = FormStartPosition.CenterScreen;
@@ -66,11 +68,11 @@ internal sealed class MainForm : Form
         Load += async (_, _) => await StartupAsync();
     }
 
-    // ===================== Costruzione dell'interfaccia =====================
+    // ===================== UI construction =====================
 
     private TabPage BuildExportTab()
     {
-        var page = new TabPage("Esporta") { Padding = new Padding(8) };
+        var page = new TabPage("Export") { Padding = new Padding(8) };
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -81,8 +83,8 @@ internal sealed class MainForm : Form
         {
             AutoSize = true,
             Padding = new Padding(0, 0, 0, 6),
-            Text = "Spunta le mod da condividere. Espandi una mod per scegliere le singole impostazioni " +
-                   "(senza espanderla vengono incluse tutte). Le mod locali non sono condivisibili.",
+            Text = "Tick the mods to share. Expand a mod to choose individual settings " +
+                   "(if you don't expand it, all settings are included). Local mods can't be shared.",
             MaximumSize = new Size(800, 0),
         });
         layout.Controls.Add(_exportTree);
@@ -90,9 +92,9 @@ internal sealed class MainForm : Form
         var fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Padding = new Padding(0, 8, 0, 0) };
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        AddField(fields, "Nome del pacchetto:", _nameBox);
-        AddField(fields, "Autore:", _authorBox);
-        AddField(fields, "Descrizione:", _descriptionBox);
+        AddField(fields, "Package name:", _nameBox);
+        AddField(fields, "Author:", _authorBox);
+        AddField(fields, "Description:", _descriptionBox);
         layout.Controls.Add(fields);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, AutoSize = true };
@@ -112,7 +114,7 @@ internal sealed class MainForm : Form
 
     private TabPage BuildImportTab()
     {
-        var page = new TabPage("Importa") { Padding = new Padding(8) };
+        var page = new TabPage("Import") { Padding = new Padding(8) };
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -140,7 +142,7 @@ internal sealed class MainForm : Form
         _exactVersionBox.CheckedChanged += async (_, _) => { if (_package is not null) await PlanAsync(); };
         _importTree.BeforeCheck += (_, e) =>
         {
-            // Solo i nodi delle mod sono spuntabili, e solo se c'è qualcosa da fare.
+            // Only mod nodes can be ticked, and only when there is something to do.
             if (e.Node?.Tag is not PlannedMod p || p.Action == ModAction.Skip) e.Cancel = true;
         };
         _applyButton.Click += async (_, _) => await ApplyAsync();
@@ -153,7 +155,7 @@ internal sealed class MainForm : Form
         panel.Controls.Add(box);
     }
 
-    // ===================== Avvio =====================
+    // ===================== Startup =====================
 
     private async Task StartupAsync()
     {
@@ -164,14 +166,14 @@ internal sealed class MainForm : Form
         catch (WindhawkCliException)
         {
             var answer = MessageBox.Show(this,
-                "Non trovo windhawk-cli.exe. Serve Windhawk 2.0 o successivo.\n\n" +
-                "Vuoi indicare tu dove si trova?", "Windhawk Share",
+                "windhawk-cli.exe not found. Windhawk 2.0 or later is required.\n\n" +
+                "Do you want to locate it yourself?", "Windhawk Share",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (answer == DialogResult.Yes)
             {
                 using var dialog = new OpenFileDialog
                 {
-                    Title = "Seleziona windhawk-cli.exe",
+                    Title = "Select windhawk-cli.exe",
                     Filter = "windhawk-cli.exe|windhawk-cli.exe",
                 };
                 if (dialog.ShowDialog(this) == DialogResult.OK)
@@ -188,14 +190,20 @@ internal sealed class MainForm : Form
         }
 
         await LoadInstalledAsync();
+
+        if (_packageToOpen is not null && File.Exists(_packageToOpen))
+        {
+            _tabs.SelectedIndex = 1;
+            await OpenPackageFromPathAsync(_packageToOpen);
+        }
     }
 
-    // ===================== Esporta =====================
+    // ===================== Export =====================
 
     private async Task LoadInstalledAsync()
     {
         if (_cli is null) return;
-        await RunBusyAsync("Lettura delle mod installate...", async () =>
+        await RunBusyAsync("Reading installed mods...", async () =>
         {
             _installed = await _cli.ListInstalledModsAsync();
 
@@ -205,19 +213,19 @@ internal sealed class MainForm : Form
             {
                 var isLocal = !OfficialCheck.IsValidModId(mod.Id);
                 var node = new TreeNode(isLocal
-                    ? $"{mod.Name}  ({mod.Id}) — mod locale, non condivisibile"
-                    : $"{mod.Name}  ({mod.Id}, {mod.Version}){(mod.Enabled ? "" : " — disattivata")}")
+                    ? $"{mod.Name}  ({mod.Id}) — local mod, can't be shared"
+                    : $"{mod.Name}  ({mod.Id}, {mod.Version}){(mod.Enabled ? "" : " — disabled")}")
                 {
                     Tag = mod,
                 };
                 if (isLocal) node.ForeColor = SystemColors.GrayText;
-                else node.Nodes.Add(new TreeNode("caricamento...") { Tag = LoadingTag });
+                else node.Nodes.Add(new TreeNode("loading...") { Tag = LoadingTag });
                 _exportTree.Nodes.Add(node);
                 if (isLocal) node.HideCheckBox();
                 else node.Nodes[0].HideCheckBox();
             }
             _exportTree.EndUpdate();
-            _status.Text = $"{_installed.Count} mod installate";
+            _status.Text = $"{_installed.Count} mods installed";
         });
     }
 
@@ -236,20 +244,20 @@ internal sealed class MainForm : Form
             modNode.Nodes.Clear();
             foreach (var (root, count) in roots)
             {
-                modNode.Nodes.Add(new TreeNode(count == 1 ? root : $"{root}  ({count} valori)")
+                modNode.Nodes.Add(new TreeNode(count == 1 ? root : $"{root}  ({count} values)")
                 {
                     Tag = root,
                     Checked = modNode.Checked,
                 });
             }
             if (roots.Count == 0)
-                modNode.Text += " — nessuna impostazione";
+                modNode.Text += " — no settings";
             _exportTree.EndUpdate();
             _updatingChecks = false;
         }
         catch (WindhawkCliException e)
         {
-            modNode.Nodes[0].Text = "errore: " + e.Message;
+            modNode.Nodes[0].Text = "error: " + e.Message;
         }
     }
 
@@ -268,13 +276,13 @@ internal sealed class MainForm : Form
         {
             if (e.Node.Tag is InstalledMod)
             {
-                // Spuntare la mod spunta tutte le sue impostazioni.
+                // Ticking a mod ticks all its settings.
                 foreach (TreeNode child in e.Node.Nodes)
                     if (child.Tag as string != LoadingTag) child.Checked = e.Node.Checked;
             }
             else if (e.Node.Parent is { } parent)
             {
-                // Spuntare un'impostazione spunta la mod.
+                // Ticking a setting ticks its mod.
                 if (e.Node.Checked) parent.Checked = true;
             }
         }
@@ -294,7 +302,7 @@ internal sealed class MainForm : Form
             var settingNodes = node.Nodes.Cast<TreeNode>().Where(n => n.Tag is string s && s != LoadingTag).ToList();
             if (settingNodes.Count == 0 || settingNodes.All(n => n.Checked))
             {
-                result.Add(new ModSelection(mod.Id, null)); // tutte le impostazioni
+                result.Add(new ModSelection(mod.Id, null)); // all settings
             }
             else
             {
@@ -312,25 +320,25 @@ internal sealed class MainForm : Form
         var selections = CollectSelections();
         if (selections.Count == 0)
         {
-            ShowInfo("Spunta almeno una mod da condividere.");
+            ShowInfo("Tick at least one mod to share.");
             return;
         }
         if (string.IsNullOrWhiteSpace(_nameBox.Text))
         {
-            ShowInfo("Dai un nome al pacchetto.");
+            ShowInfo("Please give the package a name.");
             _nameBox.Focus();
             return;
         }
 
         using var dialog = new SaveFileDialog
         {
-            Title = "Salva pacchetto",
-            Filter = "Pacchetto Windhawk Share (*.json)|*.json",
+            Title = "Save package",
+            Filter = "Windhawk Share package (*.json)|*.json",
             FileName = SafeFileName(_nameBox.Text) + ".json",
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
-        await RunBusyAsync("Verifica con il repository ufficiale...", async () =>
+        await RunBusyAsync("Verifying against the official repository...", async () =>
         {
             var meta = new PackageMeta
             {
@@ -345,41 +353,45 @@ internal sealed class MainForm : Form
             var report = await new Exporter(_cli, check).BuildAsync(selections, meta, _installed);
 
             var text = new StringBuilder();
-            foreach (var (id, reason) in report.Excluded) text.AppendLine($"Esclusa {id}: {reason}");
-            foreach (var w in report.Warnings) text.AppendLine($"Avviso: {w}");
+            foreach (var (id, reason) in report.Excluded) text.AppendLine($"Excluded {id}: {reason}");
+            foreach (var w in report.Warnings) text.AppendLine($"Warning: {w}");
 
             if (report.Package.Mods.Count == 0)
             {
-                ShowError("Nessuna mod esportabile, pacchetto non creato.\n\n" + text);
+                ShowError("No exportable mods, package not created.\n\n" + text);
                 return;
             }
 
             var json = JsonSerializer.Serialize(report.Package, PackageJsonContext.Default.SetupPackage);
             await File.WriteAllTextAsync(dialog.FileName, json, new UTF8Encoding(false));
 
-            var summary = new StringBuilder($"Pacchetto salvato:\n{dialog.FileName}\n\n");
-            foreach (var m in report.Package.Mods) summary.AppendLine($"• {m.Id} {m.Version}: {m.Settings.Count} valori");
+            var summary = new StringBuilder($"Package saved:\n{dialog.FileName}\n\n");
+            foreach (var m in report.Package.Mods) summary.AppendLine($"• {m.Id} {m.Version}: {m.Settings.Count} values");
             if (text.Length > 0) summary.AppendLine().Append(text);
             ShowInfo(summary.ToString());
-            _status.Text = "Pacchetto salvato";
+            _status.Text = "Package saved";
         });
     }
 
-    // ===================== Importa =====================
+    // ===================== Import =====================
 
     private async Task OpenPackageAsync()
     {
         using var dialog = new OpenFileDialog
         {
-            Title = "Apri pacchetto",
-            Filter = "Pacchetto Windhawk Share (*.json)|*.json|Tutti i file|*.*",
+            Title = "Open package",
+            Filter = "Pacchetto Windhawk Share (*.json)|*.json|All files|*.*",
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        await OpenPackageFromPathAsync(dialog.FileName);
+    }
 
+    private async Task OpenPackageFromPathAsync(string path)
+    {
         try
         {
-            _package = ImportValidation.Load(dialog.FileName);
-            _packagePath = dialog.FileName;
+            _package = ImportValidation.Load(path);
+            _packagePath = path;
         }
         catch (WindhawkCliException e)
         {
@@ -390,11 +402,11 @@ internal sealed class MainForm : Form
         var meta = _package.Meta;
         var current = Exporter.CurrentWindows();
         var info = new StringBuilder();
-        info.AppendLine($"{meta.Name}   di {(string.IsNullOrWhiteSpace(meta.Author) ? "?" : meta.Author)}");
+        info.AppendLine($"{meta.Name}   by {(string.IsNullOrWhiteSpace(meta.Author) ? "?" : meta.Author)}");
         if (!string.IsNullOrWhiteSpace(meta.Description)) info.AppendLine(meta.Description);
-        info.Append($"Creato su {meta.Windows.Product} (build {meta.Windows.Build}), Windhawk {meta.WindhawkVersion ?? "?"}");
+        info.Append($"Created on {meta.Windows.Product} (build {meta.Windows.Build}), Windhawk {meta.WindhawkVersion ?? "?"}");
         if (current.Product != meta.Windows.Product)
-            info.Append($"\nAttenzione: tu hai {current.Product}, alcune mod potrebbero non funzionare.");
+            info.Append($"\nWarning: you are on {current.Product}, some mods may not work.");
         _packageInfo.Text = info.ToString();
 
         await PlanAsync();
@@ -404,7 +416,7 @@ internal sealed class MainForm : Form
     {
         if (_cli is null || _package is null) return;
 
-        await RunBusyAsync("Verifica con il repository ufficiale...", async () =>
+        await RunBusyAsync("Verifying against the official repository...", async () =>
         {
             var plan = await new Importer(_cli).PlanAsync(_package, null, _exactVersionBox.Checked);
 
@@ -414,9 +426,9 @@ internal sealed class MainForm : Form
             {
                 var what = p.Action switch
                 {
-                    ModAction.Install => $"da installare ({p.InstallVersion ?? "ultima versione"}), {p.Settings.Count} impostazioni",
-                    ModAction.UpdateSettingsOnly => $"già installata, aggiorna {p.Settings.Count} impostazioni",
-                    _ => "ignorata",
+                    ModAction.Install => $"to install ({p.InstallVersion ?? "latest version"}), {p.Settings.Count} settings",
+                    ModAction.UpdateSettingsOnly => $"already installed, update {p.Settings.Count} settings",
+                    _ => "skipped",
                 };
                 var node = new TreeNode($"{p.Source.Id} — {what}") { Tag = p };
                 if (p.Action == ModAction.Skip) node.ForeColor = SystemColors.GrayText;
@@ -427,20 +439,20 @@ internal sealed class MainForm : Form
                 foreach (var (key, value) in p.Settings.Where(kv => ImportValidation.LooksLikePathOrCommand(kv.Value)))
                 {
                     var shown = value.Length > 120 ? value[..120] + "..." : value;
-                    node.Nodes.Add(new TreeNode($"⚠ controlla: {key} = {shown}") { ForeColor = Color.DarkOrange });
+                    node.Nodes.Add(new TreeNode($"⚠ review: {key} = {shown}") { ForeColor = Color.DarkOrange });
                 }
 
                 _importTree.Nodes.Add(node);
                 foreach (TreeNode child in node.Nodes) child.HideCheckBox();
                 if (p.Action == ModAction.Skip) node.HideCheckBox();
-                // Spunta dopo l'aggiunta: BeforeCheck blocca solo le mod da saltare.
+                // Tick after adding: BeforeCheck only blocks skipped mods.
                 node.Checked = p.Action != ModAction.Skip;
                 if (node.Nodes.Count > 0 && p.Action != ModAction.Skip) node.Expand();
             }
             _importTree.EndUpdate();
 
             _applyButton.Enabled = plan.Any(p => p.Action != ModAction.Skip);
-            _status.Text = "Controlla il piano, poi premi Applica";
+            _status.Text = "Review the plan, then click Apply";
         });
     }
 
@@ -454,35 +466,68 @@ internal sealed class MainForm : Form
             .ToList();
         if (chosen.Count == 0)
         {
-            ShowInfo("Nessuna mod selezionata.");
+            ShowInfo("No mods selected.");
+            return;
+        }
+
+        if (!Importer.IsElevated())
+        {
+            var restart = MessageBox.Show(this,
+                "Installing mods and changing settings requires administrator rights, " +
+                "because Windhawk stores them in the system registry.\n\n" +
+                "Restart Windhawk Share as administrator? The package will be reopened automatically.",
+                "Administrator rights", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (restart == DialogResult.Yes) RestartElevated();
             return;
         }
 
         var installs = chosen.Count(p => p.Action == ModAction.Install);
         var updates = chosen.Count - installs;
         var hasWarnings = chosen.Any(p => p.Settings.Any(kv => ImportValidation.LooksLikePathOrCommand(kv.Value)));
-        var question = $"Verranno installate {installs} mod e aggiornate le impostazioni di {updates}.";
-        if (hasWarnings) question += "\n\nAlcune impostazioni contengono percorsi o comandi (in arancione): le hai controllate?";
-        question += "\n\nProcedere?";
+        var question = $"{installs} mod(s) will be installed and settings will be updated for {updates}.";
+        if (hasWarnings) question += "\n\nSome settings contain paths or commands (shown in orange): have you reviewed them?";
+        question += "\n\nProceed?";
 
-        if (MessageBox.Show(this, question, "Conferma", MessageBoxButtons.YesNo,
+        if (MessageBox.Show(this, question, "Confirm", MessageBoxButtons.YesNo,
                 hasWarnings ? MessageBoxIcon.Warning : MessageBoxIcon.Question) != DialogResult.Yes)
             return;
 
-        await RunBusyAsync("Applicazione in corso...", async () =>
+        await RunBusyAsync("Applying...", async () =>
         {
             _log.Clear();
-            AppendLog($"Pacchetto: {Path.GetFileName(_packagePath)}");
+            AppendLog($"Package: {Path.GetFileName(_packagePath)}");
             var summary = await new Importer(_cli).ExecuteAsync(chosen, AppendLog);
             AppendLog("");
-            AppendLog("Riepilogo:");
+            AppendLog("Summary:");
             foreach (var line in summary) AppendLog("  " + line);
-            _status.Text = summary.Any(l => l.StartsWith("ERRORE")) ? "Completato con errori" : "Completato";
+            _status.Text = summary.Any(l => l.StartsWith("ERROR")) ? "Completed with errors" : "Completed";
         });
 
-        // Le mod installate sono cambiate: si aggiornano elenco e piano.
+        // Installed mods have changed: refresh the list and the plan.
         await LoadInstalledAsync();
         await PlanAsync();
+    }
+
+    private void RestartElevated()
+    {
+        var exe = Environment.ProcessPath;
+        if (exe is null || _packagePath is null) return;
+        var psi = new System.Diagnostics.ProcessStartInfo(exe)
+        {
+            UseShellExecute = true,
+            Verb = "runas", // shows the User Account Control prompt
+        };
+        psi.ArgumentList.Add("--import");
+        psi.ArgumentList.Add(_packagePath);
+        try
+        {
+            System.Diagnostics.Process.Start(psi);
+            Close();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The user cancelled the prompt: stay here and do nothing.
+        }
     }
 
     private void AppendLog(string line)
@@ -491,7 +536,7 @@ internal sealed class MainForm : Form
         _log.AppendText(line + Environment.NewLine);
     }
 
-    // ===================== Utilità =====================
+    // ===================== Helpers =====================
 
     private async Task RunBusyAsync(string status, Func<Task> work)
     {
@@ -505,12 +550,12 @@ internal sealed class MainForm : Form
         catch (WindhawkCliException e)
         {
             ShowError(e.Message);
-            _status.Text = "Errore";
+            _status.Text = "Error";
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or HttpRequestException)
         {
             ShowError(e.Message);
-            _status.Text = "Errore";
+            _status.Text = "Error";
         }
         finally
         {
@@ -529,7 +574,7 @@ internal sealed class MainForm : Form
     {
         var invalid = Path.GetInvalidFileNameChars();
         var cleaned = new string(name.Trim().Select(c => invalid.Contains(c) ? '-' : c).ToArray());
-        return cleaned.Length == 0 ? "pacchetto" : cleaned;
+        return cleaned.Length == 0 ? "package" : cleaned;
     }
 
     private static HttpClient CreateHttpClient()

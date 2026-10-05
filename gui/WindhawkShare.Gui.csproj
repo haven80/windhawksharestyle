@@ -11,7 +11,7 @@
     <Version>0.1.0</Version>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
 
-    <!-- Eseguibile unico. Windows Forms non supporta il trimming, quindi niente PublishTrimmed. -->
+    <!-- Single executable. Windows Forms does not support trimming, so no PublishTrimmed. -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -19,7 +19,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Stessa logica della versione da terminale: si condividono i file, tranne il Program.cs da terminale -->
+    <!-- Same logic as the command-line version: shares its files, except the command-line Program.cs -->
     <Compile Include="../src/*.cs" Exclude="../src/Program.cs" Link="Core/%(Filename)%(Extension)" />
   </ItemGroup>
 
