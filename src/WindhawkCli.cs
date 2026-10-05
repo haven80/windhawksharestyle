@@ -136,20 +136,107 @@ public sealed class WindhawkCli
         EnsureSuccess(r, "mod list");
 
         using var doc = ParseJson(r.Stdout, "mod list");
-        var array = FindArray(doc.RootElement, "mods");
+        var entries = FindModEntries(doc.RootElement)
+            ?? throw new WindhawkCliException(
+                "Formato inatteso dall'output di 'mod list'. Inizio della risposta ricevuta:\n" +
+                Snippet(r.Stdout));
 
         var result = new List<InstalledMod>();
-        foreach (var item in array.EnumerateArray())
+        foreach (var (keyId, item) in entries)
         {
-            var id = GetString(item, "id");
+            var id = FindString(item, "id") ?? keyId;
             if (string.IsNullOrEmpty(id)) continue;
             result.Add(new InstalledMod(
                 id,
-                GetString(item, "version") ?? "",
-                GetString(item, "name") ?? id,
-                item.TryGetProperty("enabled", out var en) && en.ValueKind == JsonValueKind.True));
+                FindString(item, "version") ?? "",
+                FindString(item, "name") ?? id,
+                IsEnabled(item)));
         }
         return result;
+    }
+
+    /// <summary>
+    /// Trova l'elenco delle mod in diverse strutture possibili:
+    /// un array, un oggetto con un array dentro, oppure un oggetto con le mod indicizzate per ID.
+    /// </summary>
+    private static List<(string? KeyId, JsonElement Item)>? FindModEntries(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Array)
+            return root.EnumerateArray().Select(e => ((string?)null, e)).ToList();
+
+        if (root.ValueKind != JsonValueKind.Object) return null;
+
+        // Oggetto con un array di mod dentro (es. "mods", "items", "installedMods"...).
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (prop.Value.ValueKind == JsonValueKind.Array &&
+                prop.Value.EnumerateArray().All(e => e.ValueKind == JsonValueKind.Object))
+                return prop.Value.EnumerateArray().Select(e => ((string?)null, e)).ToList();
+        }
+
+        // Oggetto con un oggetto annidato che contiene le mod (es. { "mods": { "id": {...} } }).
+        foreach (var prop in root.EnumerateObject())
+        {
+            if (prop.Value.ValueKind == JsonValueKind.Object)
+            {
+                var nested = FindModEntries(prop.Value);
+                if (nested is not null && nested.Count > 0 && LooksLikeMods(nested)) return nested;
+            }
+        }
+
+        // Oggetto indicizzato per ID: { "explorer-style": { ... }, ... }
+        var byKey = root.EnumerateObject()
+            .Where(p => p.Value.ValueKind == JsonValueKind.Object)
+            .Select(p => ((string?)p.Name, p.Value))
+            .ToList();
+        return byKey.Count > 0 && LooksLikeMods(byKey) ? byKey : null;
+    }
+
+    private static bool LooksLikeMods(List<(string? KeyId, JsonElement Item)> entries) =>
+        entries.All(e => FindString(e.Item, "version") is not null || FindString(e.Item, "id") is not null);
+
+    /// <summary>Stato attivo: "enabled", oppure "disabled" (anche dentro "config").</summary>
+    private static bool IsEnabled(JsonElement item)
+    {
+        foreach (var obj in Candidates(item))
+        {
+            if (obj.TryGetProperty("enabled", out var en) && en.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                return en.ValueKind == JsonValueKind.True;
+            if (obj.TryGetProperty("disabled", out var dis))
+            {
+                if (dis.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    return dis.ValueKind == JsonValueKind.False;
+                if (dis.ValueKind == JsonValueKind.Number && dis.TryGetInt32(out var n))
+                    return n == 0;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>L'oggetto stesso e i sotto-oggetti dove di solito stanno i dati della mod.</summary>
+    private static IEnumerable<JsonElement> Candidates(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object) yield break;
+        yield return item;
+        foreach (var name in new[] { "metadata", "config", "mod" })
+            if (item.TryGetProperty(name, out var sub) && sub.ValueKind == JsonValueKind.Object)
+                yield return sub;
+    }
+
+    private static string? FindString(JsonElement item, string name)
+    {
+        foreach (var obj in Candidates(item))
+        {
+            var v = GetString(obj, name);
+            if (v is not null) return v;
+        }
+        return null;
+    }
+
+    private static string Snippet(string text)
+    {
+        var t = text.Trim();
+        return t.Length <= 400 ? t : t[..400] + " ...";
     }
 
     /// <summary>Impostazioni correnti della mod, sempre restituite in forma piatta.</summary>
@@ -188,11 +275,10 @@ public sealed class WindhawkCli
 
         using var doc = ParseJson(r.Stdout, "repo show");
         var root = doc.RootElement;
-        var meta = root.TryGetProperty("metadata", out var m) ? m : root;
         return new RepoMod(
-            GetString(root, "id") ?? modId,
-            GetString(meta, "version") ?? "",
-            GetString(meta, "name") ?? modId);
+            FindString(root, "id") ?? modId,
+            FindString(root, "version") ?? "",
+            FindString(root, "name") ?? modId);
     }
 
     // ---------- utilità ----------
@@ -215,16 +301,6 @@ public sealed class WindhawkCli
         {
             throw new WindhawkCliException($"Output JSON non valido da '{command}': {e.Message}");
         }
-    }
-
-    private static JsonElement FindArray(JsonElement root, string propertyName)
-    {
-        if (root.ValueKind == JsonValueKind.Array) return root;
-        if (root.ValueKind == JsonValueKind.Object &&
-            root.TryGetProperty(propertyName, out var arr) &&
-            arr.ValueKind == JsonValueKind.Array)
-            return arr;
-        throw new WindhawkCliException($"Formato inatteso: manca l'elenco '{propertyName}'.");
     }
 
     private static string? GetString(JsonElement obj, string name) =>
