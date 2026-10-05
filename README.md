@@ -45,20 +45,48 @@ Le impostazioni si scelgono per nome di primo livello: `TimeStyle` include `Time
 `TimeStyle.TextColor`, ecc. Le liste (`controlStyles[0]...`, `controlStyles[1]...`) si condividono
 sempre intere, per evitare liste incoerenti.
 
+## Importazione
+
+```
+windhawk-share import pacchetto.json
+windhawk-share import pacchetto.json --only windows-11-file-explorer-styler
+windhawk-share import pacchetto.json --exact-version
+```
+
+Prima di toccare qualsiasi cosa mostra il piano: quali mod verranno installate, quali solo aggiornate,
+cosa verrà ignorato e perché, e le impostazioni che contengono percorsi, comandi o indirizzi web.
+Si procede solo dopo conferma (oppure con `--yes`).
+
+Regole dell'importatore:
+
+- Le mod si installano **solo per ID dal repository ufficiale** con `windhawk-cli mod install <id>`.
+  L'opzione `--file` della CLI non viene mai usata.
+- ID non validi, mod `local@` e mod non presenti nel repository vengono saltati.
+- Chiavi e valori vengono controllati prima di passarli alla CLI (niente `=` nelle chiavi, niente
+  argomenti che iniziano con `-`, limiti di lunghezza); poi Windhawk li valida contro lo schema della mod.
+- Se Windhawk rifiuta qualche impostazione (es. non esiste più nella versione installata), le altre
+  vengono applicate lo stesso, gruppo per gruppo, e quelle rifiutate vengono elencate.
+- Per le mod già installate cambiano solo le impostazioni presenti nel pacchetto; versione e stato
+  attivo/disattivo restano come sono. Le mod nuove vengono installate attive o disattive come nel pacchetto.
+- Di default si installa l'ultima versione della mod; con `--exact-version` quella del pacchetto.
+
 ## Da verificare su un vero Windhawk 2.0
 
 Il codice si basa sulla documentazione della CLI, ma non è stato provato su Windhawk reale.
 Controlla questi punti (sono tutti isolati in un solo posto nel codice):
 
-1. **Posizione di `--json`** (`WindhawkCli.RunAsync`): si assume che vada prima del comando,
+1. ~~Posizione di `--json`~~ (verificato). **Posizione di `--json`** (`WindhawkCli.RunAsync`): si assume che vada prima del comando,
    es. `windhawk-cli --json mod list`. Se la CLI lo vuole alla fine, va spostato lì.
 2. **Forma del JSON** di `mod list`, `mod settings get`, `repo show` (`WindhawkCli`):
    il parsing accetta sia un array diretto sia un oggetto con l'elenco dentro, e sia impostazioni
    piatte sia annidate, ma conviene confrontarlo con l'output reale.
-3. **Prefisso delle mod locali** (`OfficialCheck.CheckAsync`): si assume `local@`.
+3. ~~Prefisso delle mod locali~~: verificato, è `local@`.
 4. **Cartella dei sorgenti** (`OfficialCheck.DefaultModsSourceDir`): si assume
    `%ProgramData%\Windhawk\ModsSource`. Per la versione portable usa `--mods-source`.
-5. **Booleani**: si esportano come li restituisce la CLI (`true`/`false` oppure `1`/`0`).
+5. **Booleani**: si esportano come li restituisce la CLI e in importazione si passano come
+   `true`/`false` (`ImportValidation.ToCliValue`).
+6. **Installazione** (`WindhawkCli.InstallFromRepoAsync`): si assume che `mod install <id>` installi
+   dal repository, con `--version` e `--disabled` facoltativi.
 
 Comandi utili per controllare:
 
@@ -82,4 +110,5 @@ non trasporti codice: è il motivo di questo progetto.
 - `src/OfficialCheck.cs`: verifica con il repository ufficiale
 - `src/SettingsTools.cs`: impostazioni piatte e selezione per nome
 - `src/Exporter.cs`: costruzione del pacchetto
+- `src/Importer.cs`: controlli sul pacchetto ricevuto, piano e applicazione
 - `src/Program.cs`: comandi da riga di comando
