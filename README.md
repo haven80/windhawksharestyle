@@ -1,126 +1,108 @@
-# windhawk-share
+# Windhawk Share
 
-Strumento per condividere i propri setup di Windhawk: scegli quali mod e quali impostazioni
-condividere, e ottieni un file JSON da pubblicare o passare ad altri.
+> ⚠️ **Alpha software.** Expect bugs and rough edges. Back up your Windhawk settings before importing.
 
-## Regola fondamentale
+Export your Windhawk mod settings to a file and import them on another PC: share your setup with
+others, or try someone else's in a few clicks.
 
-Si condividono **solo mod del repository ufficiale** (`ramensoftware/windhawk-mods`), **non modificate**.
+## Core rule
 
-- Il formato del pacchetto non ha campi per codice, sorgenti o URL: contiene solo ID, versioni e valori.
-- Le mod locali (`local@...`) e quelle non presenti nel repository vengono escluse.
-- Se la versione installata è l'ultima, il sorgente installato viene confrontato con quello ufficiale
-  (SHA-256): se è diverso, la mod viene esclusa.
-- L'indirizzo del repository è fisso nel codice, mai letto da file esterni.
-- Se il repository non è raggiungibile, l'esportazione si interrompe: senza verifica non si esporta.
+Only **unmodified mods from the official repository** (`ramensoftware/windhawk-mods`) are shared.
 
-## Requisiti
+- The package format has no fields for code, sources or URLs: it only contains mod IDs, versions
+  and setting values.
+- Local mods (`local@...`) and mods not in the official repository are excluded.
+- When the installed version is the latest one, the installed source is compared with the official
+  source (SHA-256): if they differ, the mod is excluded.
+- On import, mods are installed **by ID only, from the official repository**, through Windhawk's own
+  CLI. The CLI's `--file` option is never used.
+- The repository address is hard-coded, never read from external files.
+- If the repository can't be reached, the operation stops: no verification, no export or install.
 
-- **Windhawk 2.0 o successivo**: lo strumento usa `windhawk-cli.exe`, la riga di comando ufficiale
-  introdotta con la 2.0 (al momento in alpha). Con la 1.7.x non funziona.
-- Per compilare: .NET 10 SDK. Per usare l'eseguibile pubblicato non serve nulla.
+## Requirements
 
-## Compilazione
+- **Windhawk 2.0 or later** (currently in alpha). The tool uses `windhawk-cli.exe`, the official
+  command-line interface introduced in 2.0. It does not work with Windhawk 1.7.x.
+- **Administrator rights for importing**: Windhawk stores settings in the system registry
+  (`HKEY_LOCAL_MACHINE`). Exporting works without them.
+- To build: .NET 10 SDK. The published executables need nothing else.
 
-```
-dotnet publish -c Release -r win-x64 -o publish
-```
+## GUI version
 
-Produce `publish/windhawk-share.exe`, un unico file autonomo. Per PC ARM usa `-r win-arm64`.
+`windhawk-share-gui.exe` has two tabs:
 
-## Versione grafica
+- **Export**: tick the mods to share (expand them to choose individual settings), fill in name,
+  author and description, then click **Save package...**. Local mods are greyed out and can't be
+  selected.
+- **Import**: **Open package...** shows the plan. Settings containing paths or commands are shown
+  in orange. Untick any mods you don't want, then click **Apply**. If the app isn't running as
+  administrator, it offers to restart itself elevated and reopens the same package.
 
-`windhawk-share-gui.exe` fa le stesse cose con una finestra a due schede:
-
-- **Esporta**: spunta le mod (espandile per scegliere le singole impostazioni), compila nome, autore
-  e descrizione, poi "Salva pacchetto...". Le mod locali compaiono in grigio e non sono selezionabili.
-- **Importa**: "Apri pacchetto..." mostra il piano; le impostazioni con percorsi o comandi sono in
-  arancione. Togli la spunta alle mod che non vuoi, poi "Applica".
-
-Il codice della GUI è in `gui/` e usa gli stessi file di `src/` (tranne `Program.cs`).
-
-## Uso da terminale
+## Command-line version
 
 ```
 windhawk-share list
-windhawk-share settings explorer-style
-windhawk-share export -o mio-setup.json
-windhawk-share export -o explorer.json --mod explorer-style --name "Explorer scuro" --author io
-windhawk-share export -o explorer.json --mod explorer-style:Theme,controlStyles
+windhawk-share settings windows-11-file-explorer-styler
+windhawk-share export -o my-setup.json
+windhawk-share export -o explorer.json --mod windows-11-file-explorer-styler --name "My Explorer" --author me
+windhawk-share export -o explorer.json --mod windows-11-file-explorer-styler:theme,controlStyles
+windhawk-share import my-setup.json
+windhawk-share import my-setup.json --only windows-11-file-explorer-styler
+windhawk-share import my-setup.json --exact-version
 ```
 
-Senza `--mod`, `export` avvia la scelta guidata: numeri delle mod, poi per ciascuna le impostazioni
-(Invio = tutte).
+Without `--mod`, `export` starts a guided selection.
 
-Le impostazioni si scelgono per nome di primo livello: `TimeStyle` include `TimeStyle.FontSize`,
-`TimeStyle.TextColor`, ecc. Le liste (`controlStyles[0]...`, `controlStyles[1]...`) si condividono
-sempre intere, per evitare liste incoerenti.
+Settings are selected by top-level name: `TimeStyle` includes `TimeStyle.FontSize`,
+`TimeStyle.TextColor`, etc. Lists (`controlStyles[0]...`, `controlStyles[1]...`) are always shared
+whole, to avoid inconsistent lists.
 
-## Importazione
+## How import works
 
-```
-windhawk-share import pacchetto.json
-windhawk-share import pacchetto.json --only windows-11-file-explorer-styler
-windhawk-share import pacchetto.json --exact-version
-```
+Before changing anything, the tool shows the plan: which mods will be installed, which will only have
+their settings updated, what will be skipped and why, and which settings contain paths, commands or
+web addresses. Nothing happens until you confirm.
 
-Prima di toccare qualsiasi cosa mostra il piano: quali mod verranno installate, quali solo aggiornate,
-cosa verrà ignorato e perché, e le impostazioni che contengono percorsi, comandi o indirizzi web.
-Si procede solo dopo conferma (oppure con `--yes`).
+- Keys and values are checked before being passed to the CLI (no `=` in keys, no arguments starting
+  with `-`, length limits); then Windhawk validates them against the mod's settings schema.
+- If Windhawk rejects some settings (e.g. they no longer exist in the installed version), the others
+  are still applied, group by group, and the rejected ones are listed.
+- For mods you already have, only the settings in the package change; version and enabled state are
+  left as they are. New mods are installed enabled or disabled as in the package.
+- By default the latest version of each mod is installed; `--exact-version` (or the checkbox in the
+  GUI) installs the package's version instead.
 
-Regole dell'importatore:
+## Building
 
-- Le mod si installano **solo per ID dal repository ufficiale** con `windhawk-cli mod install <id>`.
-  L'opzione `--file` della CLI non viene mai usata.
-- ID non validi, mod `local@` e mod non presenti nel repository vengono saltati.
-- Chiavi e valori vengono controllati prima di passarli alla CLI (niente `=` nelle chiavi, niente
-  argomenti che iniziano con `-`, limiti di lunghezza); poi Windhawk li valida contro lo schema della mod.
-- Se Windhawk rifiuta qualche impostazione (es. non esiste più nella versione installata), le altre
-  vengono applicate lo stesso, gruppo per gruppo, e quelle rifiutate vengono elencate.
-- Per le mod già installate cambiano solo le impostazioni presenti nel pacchetto; versione e stato
-  attivo/disattivo restano come sono. Le mod nuove vengono installate attive o disattive come nel pacchetto.
-- Di default si installa l'ultima versione della mod; con `--exact-version` quella del pacchetto.
-
-## Da verificare su un vero Windhawk 2.0
-
-Il codice si basa sulla documentazione della CLI, ma non è stato provato su Windhawk reale.
-Controlla questi punti (sono tutti isolati in un solo posto nel codice):
-
-1. ~~Posizione di `--json`~~ (verificato). **Posizione di `--json`** (`WindhawkCli.RunAsync`): si assume che vada prima del comando,
-   es. `windhawk-cli --json mod list`. Se la CLI lo vuole alla fine, va spostato lì.
-2. **Forma del JSON** di `mod list`, `mod settings get`, `repo show` (`WindhawkCli`):
-   il parsing accetta sia un array diretto sia un oggetto con l'elenco dentro, e sia impostazioni
-   piatte sia annidate, ma conviene confrontarlo con l'output reale.
-3. ~~Prefisso delle mod locali~~: verificato, è `local@`.
-4. **Cartella dei sorgenti** (`OfficialCheck.DefaultModsSourceDir`): si assume
-   `%ProgramData%\Windhawk\ModsSource`. Per la versione portable usa `--mods-source`.
-5. **Booleani**: si esportano come li restituisce la CLI e in importazione si passano come
-   `true`/`false` (`ImportValidation.ToCliValue`).
-6. **Installazione** (`WindhawkCli.InstallFromRepoAsync`): si assume che `mod install <id>` installi
-   dal repository, con `--version` e `--disabled` facoltativi.
-
-Comandi utili per controllare:
+Locally:
 
 ```
-windhawk-cli --help
-windhawk-cli --json mod list
-windhawk-cli --json mod settings get <id-mod>
-windhawk-cli --json repo show <id-mod>
+dotnet publish WindhawkShare.csproj -c Release -r win-x64 -o publish/cli
+dotnet publish gui/WindhawkShare.Gui.csproj -c Release -r win-x64 -o publish/gui
 ```
 
-## Perché non usare direttamente `windhawk-cli data export`
+Use `-r win-arm64` for ARM PCs.
 
-La funzione ufficiale di backup è pensata per trasferire i propri dati sul proprio PC, e l'archivio
-può includere anche mod locali. Per pubblicare setup che chiunque può scaricare serve un formato che
-non trasporti codice: è il motivo di questo progetto.
+GitHub Actions builds both versions for x64 and ARM64 on every push to `main`. Pushing a tag like
+`v0.1.0` also publishes a release with the executables attached.
 
-## Struttura
+## Known limitations
 
-- `src/Models.cs`: formato del pacchetto
-- `src/WindhawkCli.cs`: unico punto di contatto con Windhawk, tramite la CLI ufficiale
-- `src/OfficialCheck.cs`: verifica con il repository ufficiale
-- `src/SettingsTools.cs`: impostazioni piatte e selezione per nome
-- `src/Exporter.cs`: costruzione del pacchetto
-- `src/Importer.cs`: controlli sul pacchetto ricevuto, piano e applicazione
-- `src/Program.cs`: comandi da riga di comando
-- `gui/`: versione grafica (Windows Forms)
+- The executables are not digitally signed yet, so Windows SmartScreen may warn on first launch.
+  Right-click → Properties → Unblock.
+- The check for locally modified mods assumes mod sources are in
+  `%ProgramData%\Windhawk\ModsSource`. If they aren't found, the check is skipped with a warning
+  (use `--mods-source` for portable installs).
+- If your list setting is longer than the package's, the extra items are left unchanged
+  (the plan warns about it).
+
+## Project structure
+
+- `src/Models.cs`: package format
+- `src/WindhawkCli.cs`: the only point of contact with Windhawk, through the official CLI
+- `src/OfficialCheck.cs`: verification against the official repository
+- `src/SettingsTools.cs`: flat settings and selection by name
+- `src/Exporter.cs`: package creation
+- `src/Importer.cs`: checks on incoming packages, plan and execution
+- `src/Program.cs`: command-line interface
+- `gui/`: GUI version (Windows Forms), sharing the files in `src/` except `Program.cs`

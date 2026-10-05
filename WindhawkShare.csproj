@@ -9,18 +9,18 @@
     <RootNamespace>WindhawkShare</RootNamespace>
     <Version>0.1.0</Version>
 
-    <!-- Eseguibile unico, senza dover installare .NET sul PC dell'utente -->
+    <!-- Single executable, no need to install .NET on the user's PC -->
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
     <InvariantGlobalization>true</InvariantGlobalization>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <!-- Il JSON usa la generazione di codice, quindi la riflessione non serve -->
+    <!-- JSON uses source generation, so reflection is not needed -->
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- La GUI è un progetto separato nella cartella gui/ -->
+    <!-- The GUI is a separate project in the gui/ folder -->
     <Compile Remove="gui/**" />
     <None Remove="gui/**" />
     <EmbeddedResource Remove="gui/**" />
