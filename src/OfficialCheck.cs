@@ -77,9 +77,13 @@ public sealed class OfficialCheck(WindhawkCli cli, HttpClient http, string modsS
         return new(OfficialStatus.Verified, "verificata con il repository ufficiale", repo.Version);
     }
 
-    /// <summary>ID delle mod ufficiali: lettere minuscole, numeri e trattini.</summary>
+    /// <summary>
+    /// ID delle mod ufficiali: lettere minuscole, numeri e trattini, e deve iniziare con lettera o numero
+    /// (un ID che inizia con "-" verrebbe scambiato per un'opzione della CLI).
+    /// </summary>
     public static bool IsValidModId(string id) =>
         id.Length is > 0 and <= 128 &&
+        char.IsAsciiLetterOrDigit(id[0]) &&
         id.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-');
 
     /// <summary>Stessa normalizzazione della CLI: niente BOM, fine riga Unix.</summary>

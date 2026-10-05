@@ -297,6 +297,41 @@ public sealed class WindhawkCli
             FindString(root, "name") ?? modId);
     }
 
+    /// <summary>
+    /// Installa una mod DAL REPOSITORY UFFICIALE, solo per ID. L'opzione --file non viene mai usata:
+    /// è questo che garantisce che il codice installato arrivi sempre dal repository ufficiale.
+    /// </summary>
+    public async Task<CliResult> InstallFromRepoAsync(string modId, string? version, bool disabled)
+    {
+        if (!OfficialCheck.IsValidModId(modId))
+            throw new WindhawkCliException($"ID mod non valido: {modId}");
+
+        var args = new List<string> { "mod", "install", modId };
+        if (version is not null)
+        {
+            if (!ImportValidation.IsValidVersion(version))
+                throw new WindhawkCliException($"Versione non valida: {version}");
+            args.Add("--version");
+            args.Add(version);
+        }
+        if (disabled) args.Add("--disabled");
+        return await RunAsync(args);
+    }
+
+    /// <summary>Imposta più valori in un colpo solo. Windhawk li valida contro lo schema della mod.</summary>
+    public async Task<CliResult> SetSettingsAsync(string modId, IEnumerable<KeyValuePair<string, string>> values)
+    {
+        var args = new List<string> { "mod", "settings", "set", modId };
+        args.AddRange(values.Select(kv => $"{kv.Key}={kv.Value}"));
+        return await RunAsync(args);
+    }
+
+    public static string ErrorText(CliResult r)
+    {
+        var detail = string.IsNullOrWhiteSpace(r.Stderr) ? r.Stdout : r.Stderr;
+        return $"codice {r.ExitCode}: {Snippet(detail)}";
+    }
+
     // ---------- utilità ----------
 
     private static void EnsureSuccess(CliResult r, string command)

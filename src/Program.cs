@@ -37,6 +37,7 @@ static async Task<int> Run(string[] args)
         "list" => await ListCommand(cli),
         "settings" => await SettingsCommand(cli, options),
         "export" => await ExportCommand(cli, options),
+        "import" => await ImportCommand(cli, options),
         _ => Usage($"Comando sconosciuto: {command}"),
     };
 }
@@ -129,6 +130,86 @@ static async Task<int> ExportCommand(WindhawkCli cli, Options options)
     return 0;
 }
 
+static async Task<int> ImportCommand(WindhawkCli cli, Options options)
+{
+    if (options.Positional.Count != 1) return Usage("Uso: windhawk-share import <pacchetto.json>");
+
+    var package = ImportValidation.Load(options.Positional[0]);
+    var meta = package.Meta;
+    Console.WriteLine($"Pacchetto: {meta.Name}  (di {meta.Author})");
+    if (!string.IsNullOrWhiteSpace(meta.Description)) Console.WriteLine($"  {meta.Description}");
+    Console.WriteLine($"  Creato su {meta.Windows.Product} build {meta.Windows.Build}, Windhawk {meta.WindhawkVersion ?? "?"}");
+
+    var current = Exporter.CurrentWindows();
+    if (current.Product != meta.Windows.Product)
+        Console.WriteLine($"  ATTENZIONE: tu hai {current.Product}, alcune mod potrebbero non funzionare.");
+
+    Console.WriteLine();
+    Console.WriteLine("Verifica con il repository ufficiale in corso...");
+    var importer = new Importer(cli);
+    var plan = await importer.PlanAsync(package, options.OnlyMods, options.ExactVersion);
+
+    Console.WriteLine();
+    Console.WriteLine("Cosa verrà fatto:");
+    foreach (var p in plan)
+    {
+        var what = p.Action switch
+        {
+            ModAction.Install => $"INSTALLA {p.InstallVersion ?? "(ultima versione)"}, {p.Settings.Count} impostazioni",
+            ModAction.UpdateSettingsOnly => $"già installata, aggiorna {p.Settings.Count} impostazioni",
+            _ => "salta",
+        };
+        Console.WriteLine($"  {p.Source.Id}: {what}");
+        foreach (var note in p.Notes) Console.WriteLine($"      - {note}");
+    }
+
+    var todo = plan.Where(p => p.Action != ModAction.Skip).ToList();
+    if (todo.Count == 0)
+    {
+        Console.WriteLine("Niente da fare.");
+        return 0;
+    }
+
+    // Le impostazioni di tipo testo possono contenere percorsi o comandi: si mostrano prima di applicarle.
+    var suspicious = todo
+        .SelectMany(p => p.Settings.Select(kv => (p.Source.Id, kv.Key, kv.Value)))
+        .Where(x => LooksLikePathOrCommand(x.Value))
+        .ToList();
+    if (suspicious.Count > 0)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Impostazioni che contengono percorsi o comandi, controllale:");
+        foreach (var (id, key, value) in suspicious)
+            Console.WriteLine($"  {id} / {key} = {(value.Length > 120 ? value[..120] + "..." : value)}");
+    }
+
+    if (!options.Yes)
+    {
+        Console.WriteLine();
+        if (!Ask("Procedere? (s/N): ").Equals("s", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("Annullato, nessuna modifica fatta.");
+            return 0;
+        }
+    }
+
+    Console.WriteLine();
+    var summary = await importer.ExecuteAsync(plan, msg => Console.WriteLine(msg));
+    Console.WriteLine();
+    Console.WriteLine("Riepilogo:");
+    foreach (var line in summary) Console.WriteLine($"  {line}");
+    return summary.Any(l => l.StartsWith("ERRORE")) ? 1 : 0;
+}
+
+static bool LooksLikePathOrCommand(string value) =>
+    value.Contains(":\\") || value.Contains("\\\\") || value.Contains('%') ||
+    value.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
+    value.Contains("https://", StringComparison.OrdinalIgnoreCase) ||
+    value.Contains(".exe", StringComparison.OrdinalIgnoreCase) ||
+    value.Contains(".ps1", StringComparison.OrdinalIgnoreCase) ||
+    value.Contains(".bat", StringComparison.OrdinalIgnoreCase) ||
+    value.Contains(".cmd", StringComparison.OrdinalIgnoreCase);
+
 static async Task<List<ModSelection>> InteractiveSelection(WindhawkCli cli, List<InstalledMod> installed)
 {
     Console.WriteLine("Mod installate:");
@@ -201,6 +282,7 @@ static void PrintHelp()
           list                         Elenca le mod installate
           settings <id-mod>            Mostra le impostazioni selezionabili di una mod
           export -o <file.json>        Crea un pacchetto (senza --mod parte la scelta guidata)
+          import <file.json>           Installa le mod del pacchetto e applica le impostazioni
 
         Opzioni di export:
           --mod <id>                   Includi la mod con tutte le impostazioni (ripetibile)
@@ -209,8 +291,14 @@ static void PrintHelp()
           --cli <percorso>             Percorso di windhawk-cli.exe
           --mods-source <cartella>     Cartella dei sorgenti delle mod installate
 
+        Opzioni di import:
+          --only <id1,id2>             Importa solo alcune mod del pacchetto
+          --exact-version              Installa la versione del pacchetto invece dell'ultima
+          --yes                        Non chiedere conferma
+
         Esempio:
           windhawk-share export -o mio-explorer.json --mod explorer-style --name "Explorer scuro"
+          windhawk-share import mio-explorer.json
         """);
 }
 
@@ -226,6 +314,9 @@ sealed class Options
     public string? CliPath { get; private set; }
     public string? ModsSourceDir { get; private set; }
     public string? Error { get; private set; }
+    public bool Yes { get; private set; }
+    public bool ExactVersion { get; private set; }
+    public IReadOnlySet<string>? OnlyMods { get; private set; }
 
     public static Options Parse(string[] args)
     {
@@ -238,6 +329,8 @@ sealed class Options
                 o.Positional.Add(a);
                 continue;
             }
+            if (a == "--yes") { o.Yes = true; continue; }
+            if (a == "--exact-version") { o.ExactVersion = true; continue; }
             if (i + 1 >= args.Length)
             {
                 o.Error = $"Manca il valore per {a}";
@@ -252,6 +345,11 @@ sealed class Options
                 case "--description": o.Description = value; break;
                 case "--cli": o.CliPath = value; break;
                 case "--mods-source": o.ModsSourceDir = value; break;
+                case "--only":
+                    o.OnlyMods = value
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .ToHashSet(StringComparer.Ordinal);
+                    break;
                 case "--mod":
                     var sel = ParseModSelection(value);
                     if (sel is null)
