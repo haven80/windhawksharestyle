@@ -136,7 +136,7 @@ public sealed class WindhawkCli
         EnsureSuccess(r, "mod list");
 
         using var doc = ParseJson(r.Stdout, "mod list");
-        var entries = FindModEntries(doc.RootElement)
+        var entries = FindModEntries(Unwrap(doc.RootElement))
             ?? throw new WindhawkCliException(
                 "Formato inatteso dall'output di 'mod list'. Inizio della risposta ricevuta:\n" +
                 Snippet(r.Stdout));
@@ -233,6 +233,22 @@ public sealed class WindhawkCli
         return null;
     }
 
+    /// <summary>
+    /// La CLI risponde con una busta { "schemaVersion", "success", "data" }: i dati veri sono in "data".
+    /// </summary>
+    private static JsonElement Unwrap(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("data", out var data) &&
+            (root.TryGetProperty("success", out _) || root.TryGetProperty("schemaVersion", out _)))
+        {
+            if (root.TryGetProperty("success", out var ok) && ok.ValueKind == JsonValueKind.False)
+                throw new WindhawkCliException("windhawk-cli ha segnalato un errore:\n" + Snippet(root.GetRawText()));
+            return data;
+        }
+        return root;
+    }
+
     private static string Snippet(string text)
     {
         var t = text.Trim();
@@ -248,7 +264,7 @@ public sealed class WindhawkCli
         EnsureSuccess(r, "mod settings get");
 
         using var doc = ParseJson(r.Stdout, "mod settings get");
-        var root = doc.RootElement;
+        var root = Unwrap(doc.RootElement);
         var settings = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("settings", out var s)
             ? s
             : root;
@@ -274,7 +290,7 @@ public sealed class WindhawkCli
         EnsureSuccess(r, "repo show");
 
         using var doc = ParseJson(r.Stdout, "repo show");
-        var root = doc.RootElement;
+        var root = Unwrap(doc.RootElement);
         return new RepoMod(
             FindString(root, "id") ?? modId,
             FindString(root, "version") ?? "",
