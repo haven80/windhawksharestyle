@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>windhawk-share</AssemblyName>
+    <RootNamespace>WindhawkShare</RootNamespace>
+    <Version>0.1.0</Version>
+
+    <!-- Eseguibile unico, senza dover installare .NET sul PC dell'utente -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Il JSON usa la generazione di codice, quindi la riflessione non serve -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+</Project>
