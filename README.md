@@ -28,7 +28,18 @@ dotnet publish -c Release -r win-x64 -o publish
 
 Produce `publish/windhawk-share.exe`, un unico file autonomo. Per PC ARM usa `-r win-arm64`.
 
-## Uso
+## Versione grafica
+
+`windhawk-share-gui.exe` fa le stesse cose con una finestra a due schede:
+
+- **Esporta**: spunta le mod (espandile per scegliere le singole impostazioni), compila nome, autore
+  e descrizione, poi "Salva pacchetto...". Le mod locali compaiono in grigio e non sono selezionabili.
+- **Importa**: "Apri pacchetto..." mostra il piano; le impostazioni con percorsi o comandi sono in
+  arancione. Togli la spunta alle mod che non vuoi, poi "Applica".
+
+Il codice della GUI è in `gui/` e usa gli stessi file di `src/` (tranne `Program.cs`).
+
+## Uso da terminale
 
 ```
 windhawk-share list
@@ -112,3 +123,4 @@ non trasporti codice: è il motivo di questo progetto.
 - `src/Exporter.cs`: costruzione del pacchetto
 - `src/Importer.cs`: controlli sul pacchetto ricevuto, piano e applicazione
 - `src/Program.cs`: comandi da riga di comando
+- `gui/`: versione grafica (Windows Forms)
