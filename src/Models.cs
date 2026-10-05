@@ -4,8 +4,8 @@ using System.Text.Json.Serialization;
 namespace WindhawkShare;
 
 /// <summary>
-/// Il pacchetto condivisibile. Per costruzione NON contiene codice, URL o sorgenti:
-/// solo ID di mod del repository ufficiale, versioni e valori di impostazioni.
+/// The shareable package. By design it contains NO code, URLs or sources:
+/// only official-repository mod IDs, versions and setting values.
 /// </summary>
 public sealed class SetupPackage
 {
@@ -39,9 +39,9 @@ public sealed class PackageMod
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Impostazioni piatte nel formato di Windhawk (es. "TimeStyle.FontSize", "lista[0].nome").
-    /// Valori ammessi: stringa, numero intero, booleano.
-    /// In importazione le chiavi presenti sovrascrivono, quelle assenti restano come sono.
+    /// Flat settings in Windhawk's format (e.g. "TimeStyle.FontSize", "list[0].name").
+    /// Allowed values: string, integer, boolean.
+    /// On import, keys present here overwrite; keys not present are left as they are.
     /// </summary>
     public Dictionary<string, JsonElement> Settings { get; set; } = new();
 }

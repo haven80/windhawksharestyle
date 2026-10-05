@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace WindhawkShare;
 
-/// <summary>Codici di uscita documentati di windhawk-cli.</summary>
+/// <summary>Documented exit codes of windhawk-cli.</summary>
 public static class CliExitCode
 {
     public const int Success = 0;
@@ -23,11 +23,11 @@ public sealed record InstalledMod(string Id, string Version, string Name, bool E
 
 public sealed record RepoMod(string Id, string Version, string Name);
 
-public sealed class WindhawkCliException(string message) : Exception(message);
+public class WindhawkCliException(string message) : Exception(message);
 
 /// <summary>
-/// Parla con Windhawk SOLO attraverso la CLI ufficiale (windhawk-cli.exe, Windhawk 2.0+).
-/// Nessun accesso diretto al registro o ai file interni di Windhawk.
+/// Talks to Windhawk ONLY through the official CLI (windhawk-cli.exe, Windhawk 2.0+).
+/// No direct access to the registry or to Windhawk's internal files.
 /// </summary>
 public sealed class WindhawkCli
 {
@@ -38,7 +38,7 @@ public sealed class WindhawkCli
     private WindhawkCli(string exePath) => ExePath = exePath;
 
     /// <summary>
-    /// Cerca windhawk-cli.exe: percorso esplicito, variabile WINDHAWK_CLI, PATH, cartella di installazione.
+    /// Finds windhawk-cli.exe: explicit path, WINDHAWK_CLI variable, PATH, install folder.
     /// </summary>
     public static WindhawkCli Locate(string? explicitPath = null)
     {
@@ -64,18 +64,18 @@ public sealed class WindhawkCli
             }
             catch (Exception)
             {
-                // Percorso non valido nel PATH: si ignora.
+                // Invalid entry in PATH: ignore it.
             }
         }
 
         throw new WindhawkCliException(
-            "windhawk-cli.exe non trovato. Serve Windhawk 2.0 o successivo. " +
-            "Indica il percorso con --cli <percorso> o con la variabile WINDHAWK_CLI.");
+            "windhawk-cli.exe not found. Windhawk 2.0 or later is required. " +
+            "Specify its location with --cli <path> or the WINDHAWK_CLI environment variable.");
     }
 
     /// <summary>
-    /// Esegue la CLI. Gli argomenti passano da ArgumentList: nessuna concatenazione di stringhe,
-    /// quindi valori con spazi o virgolette non possono iniettare altri argomenti.
+    /// Runs the CLI. Arguments go through ArgumentList, with no string concatenation,
+    /// so values containing spaces or quotes cannot inject extra arguments.
     /// </summary>
     public async Task<CliResult> RunAsync(IEnumerable<string> args, bool json = true)
     {
@@ -89,12 +89,12 @@ public sealed class WindhawkCli
             StandardErrorEncoding = Encoding.UTF8,
         };
 
-        // DA VERIFICARE: si assume che --json sia un'opzione globale accettata prima del comando.
+        // --json is a global option placed before the command (verified).
         if (json) psi.ArgumentList.Add("--json");
         foreach (var a in args) psi.ArgumentList.Add(a);
 
         using var process = Process.Start(psi)
-            ?? throw new WindhawkCliException($"Impossibile avviare {ExePath}");
+            ?? throw new WindhawkCliException($"Could not start {ExePath}");
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
@@ -106,8 +106,8 @@ public sealed class WindhawkCli
         }
         catch (OperationCanceledException)
         {
-            try { process.Kill(entireProcessTree: true); } catch { /* già terminato */ }
-            throw new WindhawkCliException("windhawk-cli non ha risposto entro il tempo limite.");
+            try { process.Kill(entireProcessTree: true); } catch { /* already exited */ }
+            throw new WindhawkCliException("windhawk-cli did not respond in time.");
         }
 
         return new CliResult(process.ExitCode, await stdoutTask, await stderrTask);
@@ -119,7 +119,7 @@ public sealed class WindhawkCli
         {
             var r = await RunAsync(["--version"], json: false);
             if (r.ExitCode != CliExitCode.Success) return null;
-            // Tipicamente "windhawk-cli 2.0.0-alpha.5": si tiene l'ultima parola.
+            // Typically "windhawk-cli 2.0.0-alpha.5": keep the last word.
             var text = r.Stdout.Trim();
             var lastSpace = text.LastIndexOf(' ');
             return lastSpace >= 0 ? text[(lastSpace + 1)..] : (text.Length > 0 ? text : null);
@@ -138,8 +138,7 @@ public sealed class WindhawkCli
         using var doc = ParseJson(r.Stdout, "mod list");
         var entries = FindModEntries(Unwrap(doc.RootElement))
             ?? throw new WindhawkCliException(
-                "Formato inatteso dall'output di 'mod list'. Inizio della risposta ricevuta:\n" +
-                Snippet(r.Stdout));
+                "Unexpected output format from 'mod list'. Start of the response:\n" + Snippet(r.Stdout));
 
         var result = new List<InstalledMod>();
         foreach (var (keyId, item) in entries)
@@ -156,8 +155,8 @@ public sealed class WindhawkCli
     }
 
     /// <summary>
-    /// Trova l'elenco delle mod in diverse strutture possibili:
-    /// un array, un oggetto con un array dentro, oppure un oggetto con le mod indicizzate per ID.
+    /// Finds the mod list in several possible shapes:
+    /// an array, an object containing an array, or an object with mods keyed by ID.
     /// </summary>
     private static List<(string? KeyId, JsonElement Item)>? FindModEntries(JsonElement root)
     {
@@ -166,7 +165,7 @@ public sealed class WindhawkCli
 
         if (root.ValueKind != JsonValueKind.Object) return null;
 
-        // Oggetto con un array di mod dentro (es. "mods", "items", "installedMods"...).
+        // Object containing an array of mods (e.g. "mods", "items", "installedMods"...).
         foreach (var prop in root.EnumerateObject())
         {
             if (prop.Value.ValueKind == JsonValueKind.Array &&
@@ -174,7 +173,7 @@ public sealed class WindhawkCli
                 return prop.Value.EnumerateArray().Select(e => ((string?)null, e)).ToList();
         }
 
-        // Oggetto con un oggetto annidato che contiene le mod (es. { "mods": { "id": {...} } }).
+        // Object with a nested object holding the mods (e.g. { "mods": { "id": {...} } }).
         foreach (var prop in root.EnumerateObject())
         {
             if (prop.Value.ValueKind == JsonValueKind.Object)
@@ -184,7 +183,7 @@ public sealed class WindhawkCli
             }
         }
 
-        // Oggetto indicizzato per ID: { "explorer-style": { ... }, ... }
+        // Object keyed by ID: { "explorer-style": { ... }, ... }
         var byKey = root.EnumerateObject()
             .Where(p => p.Value.ValueKind == JsonValueKind.Object)
             .Select(p => ((string?)p.Name, p.Value))
@@ -195,7 +194,7 @@ public sealed class WindhawkCli
     private static bool LooksLikeMods(List<(string? KeyId, JsonElement Item)> entries) =>
         entries.All(e => FindString(e.Item, "version") is not null || FindString(e.Item, "id") is not null);
 
-    /// <summary>Stato attivo: "enabled", oppure "disabled" (anche dentro "config").</summary>
+    /// <summary>Enabled state: "enabled", or "disabled" (also inside "config").</summary>
     private static bool IsEnabled(JsonElement item)
     {
         foreach (var obj in Candidates(item))
@@ -213,7 +212,7 @@ public sealed class WindhawkCli
         return true;
     }
 
-    /// <summary>L'oggetto stesso e i sotto-oggetti dove di solito stanno i dati della mod.</summary>
+    /// <summary>The object itself plus the sub-objects where mod data usually lives.</summary>
     private static IEnumerable<JsonElement> Candidates(JsonElement item)
     {
         if (item.ValueKind != JsonValueKind.Object) yield break;
@@ -234,7 +233,8 @@ public sealed class WindhawkCli
     }
 
     /// <summary>
-    /// La CLI risponde con una busta { "schemaVersion", "success", "data" }: i dati veri sono in "data".
+    /// The CLI wraps every response in an envelope { "schemaVersion", "success", "data" }:
+    /// the actual payload is in "data".
     /// </summary>
     private static JsonElement Unwrap(JsonElement root)
     {
@@ -243,7 +243,7 @@ public sealed class WindhawkCli
             (root.TryGetProperty("success", out _) || root.TryGetProperty("schemaVersion", out _)))
         {
             if (root.TryGetProperty("success", out var ok) && ok.ValueKind == JsonValueKind.False)
-                throw new WindhawkCliException("windhawk-cli ha segnalato un errore:\n" + Snippet(root.GetRawText()));
+                throw new WindhawkCliException("windhawk-cli reported an error:\n" + Snippet(root.GetRawText()));
             return data;
         }
         return root;
@@ -255,12 +255,12 @@ public sealed class WindhawkCli
         return t.Length <= 400 ? t : t[..400] + " ...";
     }
 
-    /// <summary>Impostazioni correnti della mod, sempre restituite in forma piatta.</summary>
+    /// <summary>Current settings of a mod, always returned in flat form.</summary>
     public async Task<Dictionary<string, JsonElement>> GetSettingsAsync(string modId)
     {
         var r = await RunAsync(["mod", "settings", "get", modId]);
         if (r.ExitCode == CliExitCode.ModNotInstalled)
-            throw new WindhawkCliException($"La mod '{modId}' non è installata.");
+            throw new WindhawkCliException($"The mod '{modId}' is not installed.");
         EnsureSuccess(r, "mod settings get");
 
         using var doc = ParseJson(r.Stdout, "mod settings get");
@@ -276,9 +276,9 @@ public sealed class WindhawkCli
     }
 
     /// <summary>
-    /// Chiede alla CLI se la mod esiste nel repository ufficiale.
-    /// Restituisce null se non esiste. Lancia eccezione se la rete non funziona:
-    /// in quel caso non si può verificare, e senza verifica non si esporta.
+    /// Asks the CLI whether the mod exists in the official repository.
+    /// Returns null if it doesn't. Throws if the network is down:
+    /// without verification, nothing gets exported or installed.
     /// </summary>
     public async Task<RepoMod?> RepoShowAsync(string modId)
     {
@@ -286,7 +286,7 @@ public sealed class WindhawkCli
         if (r.ExitCode == CliExitCode.ModNotFoundInRepository) return null;
         if (r.ExitCode == CliExitCode.NetworkError)
             throw new WindhawkCliException(
-                "Impossibile contattare il repository ufficiale di Windhawk. Controlla la connessione.");
+                "Could not reach the official Windhawk repository. Check your internet connection.");
         EnsureSuccess(r, "repo show");
 
         using var doc = ParseJson(r.Stdout, "repo show");
@@ -298,19 +298,19 @@ public sealed class WindhawkCli
     }
 
     /// <summary>
-    /// Installa una mod DAL REPOSITORY UFFICIALE, solo per ID. L'opzione --file non viene mai usata:
-    /// è questo che garantisce che il codice installato arrivi sempre dal repository ufficiale.
+    /// Installs a mod FROM THE OFFICIAL REPOSITORY, by ID only. The --file option is never used:
+    /// this is what guarantees that installed code always comes from the official repository.
     /// </summary>
     public async Task<CliResult> InstallFromRepoAsync(string modId, string? version, bool disabled)
     {
         if (!OfficialCheck.IsValidModId(modId))
-            throw new WindhawkCliException($"ID mod non valido: {modId}");
+            throw new WindhawkCliException($"Invalid mod ID: {modId}");
 
         var args = new List<string> { "mod", "install", modId };
         if (version is not null)
         {
             if (!ImportValidation.IsValidVersion(version))
-                throw new WindhawkCliException($"Versione non valida: {version}");
+                throw new WindhawkCliException($"Invalid version: {version}");
             args.Add("--version");
             args.Add(version);
         }
@@ -318,7 +318,7 @@ public sealed class WindhawkCli
         return await RunAsync(args);
     }
 
-    /// <summary>Imposta più valori in un colpo solo. Windhawk li valida contro lo schema della mod.</summary>
+    /// <summary>Sets several values at once. Windhawk validates them against the mod's settings schema.</summary>
     public async Task<CliResult> SetSettingsAsync(string modId, IEnumerable<KeyValuePair<string, string>> values)
     {
         var args = new List<string> { "mod", "settings", "set", modId };
@@ -329,17 +329,17 @@ public sealed class WindhawkCli
     public static string ErrorText(CliResult r)
     {
         var detail = string.IsNullOrWhiteSpace(r.Stderr) ? r.Stdout : r.Stderr;
-        return $"codice {r.ExitCode}: {Snippet(detail)}";
+        return $"code {r.ExitCode}: {Snippet(detail)}";
     }
 
-    // ---------- utilità ----------
+    // ---------- helpers ----------
 
     private static void EnsureSuccess(CliResult r, string command)
     {
         if (r.ExitCode == CliExitCode.Success) return;
         var detail = string.IsNullOrWhiteSpace(r.Stderr) ? r.Stdout : r.Stderr;
         throw new WindhawkCliException(
-            $"windhawk-cli {command} è terminato con codice {r.ExitCode}: {detail.Trim()}");
+            $"windhawk-cli {command} exited with code {r.ExitCode}: {detail.Trim()}");
     }
 
     private static JsonDocument ParseJson(string text, string command)
@@ -350,7 +350,7 @@ public sealed class WindhawkCli
         }
         catch (JsonException e)
         {
-            throw new WindhawkCliException($"Output JSON non valido da '{command}': {e.Message}");
+            throw new WindhawkCliException($"Invalid JSON output from '{command}': {e.Message}");
         }
     }
 

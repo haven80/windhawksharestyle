@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace WindhawkShare;
 
-/// <summary>Una mod scelta per l'esportazione. Roots null = tutte le impostazioni.</summary>
+/// <summary>A mod chosen for export. Roots null = all settings.</summary>
 public sealed record ModSelection(string Id, IReadOnlySet<string>? Roots);
 
 public sealed class ExportReport
@@ -26,7 +26,7 @@ public sealed class Exporter(WindhawkCli cli, OfficialCheck officialCheck)
         {
             if (!byId.TryGetValue(sel.Id, out var mod))
             {
-                report.Excluded.Add((sel.Id, "non installata"));
+                report.Excluded.Add((sel.Id, "not installed"));
                 continue;
             }
 
@@ -46,14 +46,14 @@ public sealed class Exporter(WindhawkCli cli, OfficialCheck officialCheck)
             {
                 var existing = SettingsTools.Roots(all).Select(r => r.Root).ToHashSet(StringComparer.Ordinal);
                 foreach (var missing in sel.Roots.Where(r => !existing.Contains(r)))
-                    report.Warnings.Add($"{mod.Id}: l'impostazione '{missing}' non esiste, ignorata");
+                    report.Warnings.Add($"{mod.Id}: setting '{missing}' doesn't exist, skipped");
             }
 
             var settings = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
             foreach (var (key, value) in chosen)
             {
                 if (SettingsTools.IsSupportedValue(value)) settings[key] = value;
-                else report.Warnings.Add($"{mod.Id}: valore di tipo non supportato per '{key}', ignorato");
+                else report.Warnings.Add($"{mod.Id}: unsupported value type for '{key}', skipped");
             }
 
             report.Package.Mods.Add(new PackageMod

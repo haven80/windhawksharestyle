@@ -5,15 +5,15 @@ namespace WindhawkShare;
 
 public enum OfficialStatus
 {
-    /// <summary>Nel repository ufficiale, sorgente locale identico a quello ufficiale.</summary>
+    /// <summary>In the official repository, local source identical to the official one.</summary>
     Verified,
-    /// <summary>Nel repository ufficiale, ma il sorgente locale non è confrontabile (es. versione non più recente).</summary>
+    /// <summary>In the official repository, but the local source can't be compared (e.g. not the latest version).</summary>
     OfficialIdOnly,
-    /// <summary>Mod creata in locale: mai esportabile.</summary>
+    /// <summary>Locally created mod: never exportable.</summary>
     LocalMod,
-    /// <summary>L'ID non esiste nel repository ufficiale: mai esportabile.</summary>
+    /// <summary>The ID doesn't exist in the official repository: never exportable.</summary>
     NotInRepository,
-    /// <summary>Il sorgente installato è diverso da quello ufficiale: mai esportabile.</summary>
+    /// <summary>The installed source differs from the official one: never exportable.</summary>
     Modified,
 }
 
@@ -23,8 +23,8 @@ public sealed record OfficialCheckResult(OfficialStatus Status, string Message, 
 }
 
 /// <summary>
-/// Applica la regola fondamentale: si condividono solo mod del repository ufficiale, non modificate.
-/// L'indirizzo del repository è fisso qui nel codice e non viene mai letto da file o pacchetti.
+/// Enforces the core rule: only unmodified mods from the official repository are shared.
+/// The repository address is hard-coded here and never read from files or packages.
 /// </summary>
 public sealed class OfficialCheck(WindhawkCli cli, HttpClient http, string modsSourceDir)
 {
@@ -38,24 +38,24 @@ public sealed class OfficialCheck(WindhawkCli cli, HttpClient http, string modsS
 
     public async Task<OfficialCheckResult> CheckAsync(InstalledMod mod)
     {
-        // Le mod create in locale hanno un prefisso tipo "local@".
+        // Locally created mods have a "local@" prefix.
         if (mod.Id.StartsWith("local@", StringComparison.OrdinalIgnoreCase) || !IsValidModId(mod.Id))
-            return new(OfficialStatus.LocalMod, "mod locale, non presente nel repository ufficiale", null);
+            return new(OfficialStatus.LocalMod, "local mod, not in the official repository", null);
 
         var repo = await cli.RepoShowAsync(mod.Id);
         if (repo is null)
-            return new(OfficialStatus.NotInRepository, "non presente nel repository ufficiale", null);
+            return new(OfficialStatus.NotInRepository, "not in the official repository", null);
 
         if (!string.Equals(repo.Version, mod.Version, StringComparison.Ordinal))
             return new(OfficialStatus.OfficialIdOnly,
-                $"mod ufficiale; installata la {mod.Version}, l'ultima è la {repo.Version}, " +
-                "quindi il sorgente non è confrontabile", repo.Version);
+                $"official mod; version {mod.Version} is installed but the latest is {repo.Version}, " +
+                "so the source can't be compared", repo.Version);
 
-        // Stessa versione dell'ultima ufficiale: confronto il sorgente installato con quello ufficiale.
+        // Same version as the latest official one: compare the installed source with the official source.
         var localPath = Path.Combine(modsSourceDir, mod.Id + ".wh.cpp");
         if (!File.Exists(localPath))
             return new(OfficialStatus.OfficialIdOnly,
-                "mod ufficiale; sorgente locale non trovato, confronto non possibile", repo.Version);
+                "official mod; local source not found, comparison not possible", repo.Version);
 
         string officialSource;
         try
@@ -65,28 +65,28 @@ public sealed class OfficialCheck(WindhawkCli cli, HttpClient http, string modsS
         catch (HttpRequestException e)
         {
             return new(OfficialStatus.OfficialIdOnly,
-                $"mod ufficiale; sorgente ufficiale non scaricabile ({e.Message})", repo.Version);
+                $"official mod; could not download the official source ({e.Message})", repo.Version);
         }
 
         var localSource = await File.ReadAllTextAsync(localPath);
         if (Hash(Normalize(localSource)) != Hash(Normalize(officialSource)))
             return new(OfficialStatus.Modified,
-                "il sorgente installato è diverso da quello ufficiale (mod modificata in locale)",
+                "the installed source differs from the official one (locally modified mod)",
                 repo.Version);
 
-        return new(OfficialStatus.Verified, "verificata con il repository ufficiale", repo.Version);
+        return new(OfficialStatus.Verified, "verified against the official repository", repo.Version);
     }
 
     /// <summary>
-    /// ID delle mod ufficiali: lettere minuscole, numeri e trattini, e deve iniziare con lettera o numero
-    /// (un ID che inizia con "-" verrebbe scambiato per un'opzione della CLI).
+    /// Official mod IDs: lowercase letters, digits and hyphens, starting with a letter or digit
+    /// (an ID starting with "-" would be mistaken for a CLI option).
     /// </summary>
     public static bool IsValidModId(string id) =>
         id.Length is > 0 and <= 128 &&
         char.IsAsciiLetterOrDigit(id[0]) &&
         id.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-');
 
-    /// <summary>Stessa normalizzazione della CLI: niente BOM, fine riga Unix.</summary>
+    /// <summary>Same normalization as the CLI: no BOM, Unix line endings.</summary>
     private static string Normalize(string source) =>
         source.TrimStart('\uFEFF').Replace("\r\n", "\n").Replace('\r', '\n');
 

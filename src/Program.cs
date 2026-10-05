@@ -10,7 +10,7 @@ try
 }
 catch (WindhawkCliException e)
 {
-    Console.Error.WriteLine($"Errore: {e.Message}");
+    Console.Error.WriteLine($"Error: {e.Message}");
     return 1;
 }
 
@@ -38,7 +38,7 @@ static async Task<int> Run(string[] args)
         "settings" => await SettingsCommand(cli, options),
         "export" => await ExportCommand(cli, options),
         "import" => await ImportCommand(cli, options),
-        _ => Usage($"Comando sconosciuto: {command}"),
+        _ => Usage($"Unknown command: {command}"),
     };
 }
 
@@ -47,7 +47,7 @@ static async Task<int> ListCommand(WindhawkCli cli)
     var mods = await cli.ListInstalledModsAsync();
     if (mods.Count == 0)
     {
-        Console.WriteLine("Nessuna mod installata.");
+        Console.WriteLine("No mods installed.");
         return 0;
     }
     foreach (var m in mods)
@@ -57,29 +57,29 @@ static async Task<int> ListCommand(WindhawkCli cli)
 
 static async Task<int> SettingsCommand(WindhawkCli cli, Options options)
 {
-    if (options.Positional.Count != 1) return Usage("Uso: windhawk-share settings <id-mod>");
+    if (options.Positional.Count != 1) return Usage("Usage: windhawk-share settings <mod-id>");
     var settings = await cli.GetSettingsAsync(options.Positional[0]);
     var roots = SettingsTools.Roots(settings);
     if (roots.Count == 0)
     {
-        Console.WriteLine("Questa mod non ha impostazioni.");
+        Console.WriteLine("This mod has no settings.");
         return 0;
     }
-    Console.WriteLine("Impostazioni (selezionabili con --mod id:Nome1,Nome2):");
+    Console.WriteLine("Settings (select them with --mod id:Name1,Name2):");
     foreach (var (root, count) in roots)
-        Console.WriteLine(count == 1 ? $"  {root}" : $"  {root}  ({count} valori, condivisi insieme)");
+        Console.WriteLine(count == 1 ? $"  {root}" : $"  {root}  ({count} values, shared together)");
     return 0;
 }
 
 static async Task<int> ExportCommand(WindhawkCli cli, Options options)
 {
     if (string.IsNullOrWhiteSpace(options.Output))
-        return Usage("Specifica il file di destinazione con -o <file.json>");
+        return Usage("Specify the output file with -o <file.json>");
 
     var installed = await cli.ListInstalledModsAsync();
     if (installed.Count == 0)
     {
-        Console.Error.WriteLine("Nessuna mod installata da esportare.");
+        Console.Error.WriteLine("No installed mods to export.");
         return 1;
     }
 
@@ -88,15 +88,15 @@ static async Task<int> ExportCommand(WindhawkCli cli, Options options)
         : await InteractiveSelection(cli, installed);
     if (selections.Count == 0)
     {
-        Console.Error.WriteLine("Nessuna mod selezionata.");
+        Console.Error.WriteLine("No mods selected.");
         return 1;
     }
 
     var meta = new PackageMeta
     {
-        Name = options.Name ?? Ask("Nome del pacchetto: "),
-        Author = options.Author ?? Ask("Autore: "),
-        Description = options.Description ?? Ask("Descrizione (facoltativa): "),
+        Name = options.Name ?? Ask("Package name: "),
+        Author = options.Author ?? Ask("Author: "),
+        Description = options.Description ?? Ask("Description (optional): "),
         CreatedAt = DateTimeOffset.UtcNow,
         WindhawkVersion = await cli.GetVersionAsync(),
         Windows = Exporter.CurrentWindows(),
@@ -106,17 +106,17 @@ static async Task<int> ExportCommand(WindhawkCli cli, Options options)
     http.DefaultRequestHeaders.UserAgent.ParseAdd("windhawk-share/0.1");
     var check = new OfficialCheck(cli, http, options.ModsSourceDir ?? OfficialCheck.DefaultModsSourceDir);
 
-    Console.WriteLine("Verifica con il repository ufficiale in corso...");
+    Console.WriteLine("Verifying against the official repository...");
     var report = await new Exporter(cli, check).BuildAsync(selections, meta, installed);
 
     foreach (var (id, reason) in report.Excluded)
-        Console.WriteLine($"  ESCLUSA  {id}: {reason}");
+        Console.WriteLine($"  EXCLUDED  {id}: {reason}");
     foreach (var w in report.Warnings)
-        Console.WriteLine($"  avviso   {w}");
+        Console.WriteLine($"  warning   {w}");
 
     if (report.Package.Mods.Count == 0)
     {
-        Console.Error.WriteLine("Nessuna mod esportabile: pacchetto non creato.");
+        Console.Error.WriteLine("No exportable mods: package not created.");
         return 1;
     }
 
@@ -124,40 +124,40 @@ static async Task<int> ExportCommand(WindhawkCli cli, Options options)
     await File.WriteAllTextAsync(options.Output, json, new UTF8Encoding(false));
 
     Console.WriteLine();
-    Console.WriteLine($"Pacchetto salvato in {Path.GetFullPath(options.Output)}");
+    Console.WriteLine($"Package saved to {Path.GetFullPath(options.Output)}");
     foreach (var m in report.Package.Mods)
-        Console.WriteLine($"  {m.Id} {m.Version}: {m.Settings.Count} valori");
+        Console.WriteLine($"  {m.Id} {m.Version}: {m.Settings.Count} values");
     return 0;
 }
 
 static async Task<int> ImportCommand(WindhawkCli cli, Options options)
 {
-    if (options.Positional.Count != 1) return Usage("Uso: windhawk-share import <pacchetto.json>");
+    if (options.Positional.Count != 1) return Usage("Usage: windhawk-share import <package.json>");
 
     var package = ImportValidation.Load(options.Positional[0]);
     var meta = package.Meta;
-    Console.WriteLine($"Pacchetto: {meta.Name}  (di {meta.Author})");
+    Console.WriteLine($"Package: {meta.Name}  (by {meta.Author})");
     if (!string.IsNullOrWhiteSpace(meta.Description)) Console.WriteLine($"  {meta.Description}");
-    Console.WriteLine($"  Creato su {meta.Windows.Product} build {meta.Windows.Build}, Windhawk {meta.WindhawkVersion ?? "?"}");
+    Console.WriteLine($"  Created on {meta.Windows.Product} build {meta.Windows.Build}, Windhawk {meta.WindhawkVersion ?? "?"}");
 
     var current = Exporter.CurrentWindows();
     if (current.Product != meta.Windows.Product)
-        Console.WriteLine($"  ATTENZIONE: tu hai {current.Product}, alcune mod potrebbero non funzionare.");
+        Console.WriteLine($"  WARNING: you are on {current.Product}, some mods may not work.");
 
     Console.WriteLine();
-    Console.WriteLine("Verifica con il repository ufficiale in corso...");
+    Console.WriteLine("Verifying against the official repository...");
     var importer = new Importer(cli);
     var plan = await importer.PlanAsync(package, options.OnlyMods, options.ExactVersion);
 
     Console.WriteLine();
-    Console.WriteLine("Cosa verrà fatto:");
+    Console.WriteLine("What will happen:");
     foreach (var p in plan)
     {
         var what = p.Action switch
         {
-            ModAction.Install => $"INSTALLA {p.InstallVersion ?? "(ultima versione)"}, {p.Settings.Count} impostazioni",
-            ModAction.UpdateSettingsOnly => $"già installata, aggiorna {p.Settings.Count} impostazioni",
-            _ => "salta",
+            ModAction.Install => $"INSTALL {p.InstallVersion ?? "(latest version)"}, {p.Settings.Count} settings",
+            ModAction.UpdateSettingsOnly => $"already installed, update {p.Settings.Count} settings",
+            _ => "skip",
         };
         Console.WriteLine($"  {p.Source.Id}: {what}");
         foreach (var note in p.Notes) Console.WriteLine($"      - {note}");
@@ -166,11 +166,11 @@ static async Task<int> ImportCommand(WindhawkCli cli, Options options)
     var todo = plan.Where(p => p.Action != ModAction.Skip).ToList();
     if (todo.Count == 0)
     {
-        Console.WriteLine("Niente da fare.");
+        Console.WriteLine("Nothing to do.");
         return 0;
     }
 
-    // Le impostazioni di tipo testo possono contenere percorsi o comandi: si mostrano prima di applicarle.
+    // Text settings may contain paths or commands: show them before applying.
     var suspicious = todo
         .SelectMany(p => p.Settings.Select(kv => (p.Source.Id, kv.Key, kv.Value)))
         .Where(x => ImportValidation.LooksLikePathOrCommand(x.Value))
@@ -178,17 +178,24 @@ static async Task<int> ImportCommand(WindhawkCli cli, Options options)
     if (suspicious.Count > 0)
     {
         Console.WriteLine();
-        Console.WriteLine("Impostazioni che contengono percorsi o comandi, controllale:");
+        Console.WriteLine("Settings containing paths or commands, please review them:");
         foreach (var (id, key, value) in suspicious)
             Console.WriteLine($"  {id} / {key} = {(value.Length > 120 ? value[..120] + "..." : value)}");
+    }
+
+    if (!Importer.IsElevated())
+    {
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(new AdminRequiredException().Message);
+        return 1;
     }
 
     if (!options.Yes)
     {
         Console.WriteLine();
-        if (!Ask("Procedere? (s/N): ").Equals("s", StringComparison.OrdinalIgnoreCase))
+        if (!Ask("Proceed? (y/N): ").Equals("y", StringComparison.OrdinalIgnoreCase))
         {
-            Console.WriteLine("Annullato, nessuna modifica fatta.");
+            Console.WriteLine("Cancelled, nothing was changed.");
             return 0;
         }
     }
@@ -196,18 +203,18 @@ static async Task<int> ImportCommand(WindhawkCli cli, Options options)
     Console.WriteLine();
     var summary = await importer.ExecuteAsync(plan, msg => Console.WriteLine(msg));
     Console.WriteLine();
-    Console.WriteLine("Riepilogo:");
+    Console.WriteLine("Summary:");
     foreach (var line in summary) Console.WriteLine($"  {line}");
-    return summary.Any(l => l.StartsWith("ERRORE")) ? 1 : 0;
+    return summary.Any(l => l.StartsWith("ERROR")) ? 1 : 0;
 }
 
 static async Task<List<ModSelection>> InteractiveSelection(WindhawkCli cli, List<InstalledMod> installed)
 {
-    Console.WriteLine("Mod installate:");
+    Console.WriteLine("Installed mods:");
     for (var i = 0; i < installed.Count; i++)
         Console.WriteLine($"  {i + 1,2}. {installed[i].Name} ({installed[i].Id})");
 
-    var picked = ParseNumbers(Ask("Numeri delle mod da condividere, separati da virgola: "), installed.Count);
+    var picked = ParseNumbers(Ask("Numbers of the mods to share, comma-separated: "), installed.Count);
     var result = new List<ModSelection>();
 
     foreach (var index in picked)
@@ -221,14 +228,14 @@ static async Task<List<ModSelection>> InteractiveSelection(WindhawkCli cli, List
         }
 
         Console.WriteLine();
-        Console.WriteLine($"Impostazioni di {mod.Name}:");
+        Console.WriteLine($"Settings of {mod.Name}:");
         for (var i = 0; i < roots.Count; i++)
         {
             var (root, count) = roots[i];
-            Console.WriteLine(count == 1 ? $"  {i + 1,2}. {root}" : $"  {i + 1,2}. {root} ({count} valori)");
+            Console.WriteLine(count == 1 ? $"  {i + 1,2}. {root}" : $"  {i + 1,2}. {root} ({count} values)");
         }
 
-        var answer = Ask("Invio = tutte, oppure i numeri da includere: ");
+        var answer = Ask("Enter = all, or the numbers to include: ");
         if (string.IsNullOrWhiteSpace(answer))
         {
             result.Add(new ModSelection(mod.Id, null));
@@ -260,40 +267,42 @@ static string Ask(string prompt)
 static int Usage(string message)
 {
     Console.Error.WriteLine(message);
-    Console.Error.WriteLine("Usa 'windhawk-share help' per l'elenco dei comandi.");
+    Console.Error.WriteLine("Run 'windhawk-share help' for the list of commands.");
     return 2;
 }
 
 static void PrintHelp()
 {
     Console.WriteLine("""
-        windhawk-share: condividi i tuoi setup di Windhawk (richiede Windhawk 2.0+)
+        windhawk-share: share your Windhawk setups (requires Windhawk 2.0+)
 
-        Comandi:
-          list                         Elenca le mod installate
-          settings <id-mod>            Mostra le impostazioni selezionabili di una mod
-          export -o <file.json>        Crea un pacchetto (senza --mod parte la scelta guidata)
-          import <file.json>           Installa le mod del pacchetto e applica le impostazioni
+        Commands:
+          list                         List installed mods
+          settings <mod-id>            Show the selectable settings of a mod
+          export -o <file.json>        Create a package (without --mod, starts guided selection)
+          import <file.json>           Install the package's mods and apply its settings
 
-        Opzioni di export:
-          --mod <id>                   Includi la mod con tutte le impostazioni (ripetibile)
-          --mod <id>:Nome1,Nome2       Includi solo alcune impostazioni
-          --name, --author, --description <testo>
-          --cli <percorso>             Percorso di windhawk-cli.exe
-          --mods-source <cartella>     Cartella dei sorgenti delle mod installate
+        Export options:
+          --mod <id>                   Include the mod with all its settings (repeatable)
+          --mod <id>:Name1,Name2       Include only some settings
+          --name, --author, --description <text>
+          --cli <path>                 Path to windhawk-cli.exe
+          --mods-source <folder>       Folder with the installed mods' sources
 
-        Opzioni di import:
-          --only <id1,id2>             Importa solo alcune mod del pacchetto
-          --exact-version              Installa la versione del pacchetto invece dell'ultima
-          --yes                        Non chiedere conferma
+        Import options:
+          --only <id1,id2>             Import only some of the package's mods
+          --exact-version              Install the package's version instead of the latest
+          --yes                        Don't ask for confirmation
 
-        Esempio:
-          windhawk-share export -o mio-explorer.json --mod explorer-style --name "Explorer scuro"
-          windhawk-share import mio-explorer.json
+        Import requires administrator rights.
+
+        Examples:
+          windhawk-share export -o my-explorer.json --mod explorer-style --name "Dark Explorer"
+          windhawk-share import my-explorer.json
         """);
 }
 
-/// <summary>Parsing minimale degli argomenti, senza dipendenze esterne.</summary>
+/// <summary>Minimal argument parsing, no external dependencies.</summary>
 sealed class Options
 {
     public List<string> Positional { get; } = new();
@@ -324,7 +333,7 @@ sealed class Options
             if (a == "--exact-version") { o.ExactVersion = true; continue; }
             if (i + 1 >= args.Length)
             {
-                o.Error = $"Manca il valore per {a}";
+                o.Error = $"Missing value for {a}";
                 return o;
             }
             var value = args[++i];
@@ -345,13 +354,13 @@ sealed class Options
                     var sel = ParseModSelection(value);
                     if (sel is null)
                     {
-                        o.Error = $"Selezione non valida: {value}";
+                        o.Error = $"Invalid selection: {value}";
                         return o;
                     }
                     o.Mods.Add(sel);
                     break;
                 default:
-                    o.Error = $"Opzione sconosciuta: {a}";
+                    o.Error = $"Unknown option: {a}";
                     return o;
             }
         }

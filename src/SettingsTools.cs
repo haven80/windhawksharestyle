@@ -5,9 +5,9 @@ namespace WindhawkShare;
 public static class SettingsTools
 {
     /// <summary>
-    /// Appiattisce impostazioni annidate nel formato di Windhawk:
-    /// oggetti con il punto ("TimeStyle.FontSize"), liste con l'indice ("lista[0].nome").
-    /// Se la CLI le restituisce già piatte, le lascia invariate.
+    /// Flattens nested settings into Windhawk's format:
+    /// objects with a dot ("TimeStyle.FontSize"), lists with an index ("list[0].name").
+    /// If the CLI already returns them flat, they are left unchanged.
     /// </summary>
     public static void Flatten(JsonElement element, string prefix, Dictionary<string, JsonElement> output)
     {
@@ -34,9 +34,9 @@ public static class SettingsTools
     }
 
     /// <summary>
-    /// L'impostazione di primo livello a cui appartiene una chiave.
+    /// The top-level setting a key belongs to.
     /// "TimeStyle.FontSize" -> "TimeStyle", "controlStyles[1].target" -> "controlStyles".
-    /// Selezionando per radice, una lista viene sempre condivisa intera: mai pezzi incoerenti.
+    /// Selecting by root means a list is always shared whole: never inconsistent pieces.
     /// </summary>
     public static string RootOf(string key)
     {
@@ -44,7 +44,7 @@ public static class SettingsTools
         return cut < 0 ? key : key[..cut];
     }
 
-    /// <summary>Radici in ordine di prima apparizione, con il numero di chiavi di ciascuna.</summary>
+    /// <summary>Roots in order of first appearance, with the number of keys in each.</summary>
     public static List<(string Root, int KeyCount)> Roots(Dictionary<string, JsonElement> settings)
     {
         var order = new List<string>();
@@ -64,7 +64,7 @@ public static class SettingsTools
             .Where(kv => roots.Contains(RootOf(kv.Key)))
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-    /// <summary>Windhawk gestisce solo stringhe e interi (i booleani sono interi 0/1).</summary>
+    /// <summary>Windhawk only handles strings and integers (booleans are 0/1 integers).</summary>
     public static bool IsSupportedValue(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => true,

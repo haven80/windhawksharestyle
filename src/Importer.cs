@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace WindhawkShare;
 
 /// <summary>
-/// Controlli sul pacchetto ricevuto. Il file arriva da sconosciuti: tutto ciò che non torna viene scartato.
+/// Checks on an incoming package. Files come from strangers: anything that doesn't fit is discarded.
 /// </summary>
 public static class ImportValidation
 {
@@ -16,8 +16,8 @@ public static class ImportValidation
     public static SetupPackage Load(string path)
     {
         var info = new FileInfo(path);
-        if (!info.Exists) throw new WindhawkCliException($"File non trovato: {path}");
-        if (info.Length > MaxFileBytes) throw new WindhawkCliException("Il pacchetto è troppo grande.");
+        if (!info.Exists) throw new WindhawkCliException($"File not found: {path}");
+        if (info.Length > MaxFileBytes) throw new WindhawkCliException("The package is too large.");
 
         SetupPackage? package;
         try
@@ -26,33 +26,33 @@ public static class ImportValidation
         }
         catch (JsonException e)
         {
-            throw new WindhawkCliException($"Il file non è un pacchetto valido: {e.Message}");
+            throw new WindhawkCliException($"The file is not a valid package: {e.Message}");
         }
 
-        if (package is null) throw new WindhawkCliException("Il file è vuoto.");
+        if (package is null) throw new WindhawkCliException("The file is empty.");
         if (package.FormatVersion != SetupPackage.CurrentFormatVersion)
             throw new WindhawkCliException(
-                $"Versione del formato non supportata ({package.FormatVersion}). Aggiorna windhawk-share.");
-        if (package.Mods.Count > MaxMods) throw new WindhawkCliException("Il pacchetto contiene troppe mod.");
+                $"Unsupported package format version ({package.FormatVersion}). Please update Windhawk Share.");
+        if (package.Mods.Count > MaxMods) throw new WindhawkCliException("The package contains too many mods.");
         return package;
     }
 
-    /// <summary>Versioni tipo "1.2", "1.2.0", "2.0.0-beta": niente che possa sembrare un'opzione.</summary>
+    /// <summary>Versions like "1.2", "1.2.0", "2.0.0-beta": nothing that could look like a CLI option.</summary>
     public static bool IsValidVersion(string v) =>
         v.Length is > 0 and <= 32 &&
         char.IsAsciiLetterOrDigit(v[0]) &&
         v.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '+');
 
     /// <summary>
-    /// Chiavi tipo "Nome", "Gruppo.Nome", "lista[0].nome". Niente "=" (romperebbe chiave=valore),
-    /// niente spazi o caratteri di controllo, e non può iniziare con "-".
+    /// Keys like "Name", "Group.Name", "list[0].name". No "=" (it would break key=value),
+    /// no spaces or control characters, and no leading "-".
     /// </summary>
     public static bool IsValidSettingKey(string key) =>
         key.Length is > 0 and <= MaxKeyLength &&
         (char.IsAsciiLetterOrDigit(key[0]) || key[0] == '_') &&
         key.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '[' or ']' or '-' or '$');
 
-    /// <summary>Valori da mostrare all'utente prima di applicarli: percorsi, comandi, indirizzi web.</summary>
+    /// <summary>Values to show the user before applying them: paths, commands, web addresses.</summary>
     public static bool LooksLikePathOrCommand(string value) =>
         value.Contains(":\\") || value.Contains("\\\\") || value.Contains('%') ||
         value.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
@@ -62,19 +62,23 @@ public static class ImportValidation
         value.Contains(".bat", StringComparison.OrdinalIgnoreCase) ||
         value.Contains(".cmd", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Converte un valore nel testo atteso da "mod settings set". Null se non accettabile.</summary>
+    /// <summary>Converts a value to the text expected by "mod settings set". Null if not acceptable.</summary>
     public static string? ToCliValue(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String when value.GetString()!.Length <= MaxStringValueLength
             && !value.GetString()!.Any(c => char.IsControl(c) && c is not '\t' and not '\n' and not '\r')
             => value.GetString(),
         JsonValueKind.Number when value.TryGetInt64(out var n) => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        // DA VERIFICARE: si assume che la CLI accetti true/false per i booleani.
         JsonValueKind.True => "true",
         JsonValueKind.False => "false",
         _ => null,
     };
 }
+
+public sealed class AdminRequiredException() : WindhawkCliException(
+    "Installing mods or changing settings requires administrator rights, " +
+    "because Windhawk stores them in the system registry. " +
+    "Run Windhawk Share as administrator (right-click → Run as administrator).");
 
 public enum ModAction { Install, UpdateSettingsOnly, Skip }
 
@@ -91,8 +95,8 @@ public sealed class PlannedMod
 public sealed class Importer(WindhawkCli cli)
 {
     /// <summary>
-    /// Prepara il piano senza toccare nulla. exactVersion: installa la versione del pacchetto
-    /// invece dell'ultima disponibile.
+    /// Builds the plan without changing anything. exactVersion: install the package's version
+    /// instead of the latest one.
     /// </summary>
     public async Task<List<PlannedMod>> PlanAsync(
         SetupPackage package, IReadOnlySet<string>? onlyMods, bool exactVersion)
@@ -108,37 +112,37 @@ public sealed class Importer(WindhawkCli cli)
 
             if (!OfficialCheck.IsValidModId(mod.Id))
             {
-                p.Notes.Add("ID non valido o mod locale: ignorata");
+                p.Notes.Add("invalid ID or local mod: skipped");
                 continue;
             }
             if (!seen.Add(mod.Id))
             {
-                p.Notes.Add("presente due volte nel pacchetto: ignorata la copia");
+                p.Notes.Add("listed twice in the package: duplicate skipped");
                 continue;
             }
             if (onlyMods is not null && !onlyMods.Contains(mod.Id))
             {
-                p.Notes.Add("non selezionata");
+                p.Notes.Add("not selected");
                 continue;
             }
             if (mod.Settings.Count > ImportValidation.MaxSettingsPerMod)
             {
-                p.Notes.Add("troppe impostazioni: ignorata");
+                p.Notes.Add("too many settings: skipped");
                 continue;
             }
 
-            // Regola fondamentale: deve esistere nel repository ufficiale.
+            // Core rule: the mod must exist in the official repository.
             var repo = await cli.RepoShowAsync(mod.Id);
             if (repo is null)
             {
-                p.Notes.Add("non presente nel repository ufficiale: ignorata");
+                p.Notes.Add("not in the official repository: skipped");
                 continue;
             }
 
             foreach (var (key, value) in mod.Settings)
             {
                 var text = ImportValidation.IsValidSettingKey(key) ? ImportValidation.ToCliValue(value) : null;
-                if (text is null) p.Notes.Add($"impostazione '{Truncate(key)}' non valida: ignorata");
+                if (text is null) p.Notes.Add($"invalid setting '{Truncate(key)}': skipped");
                 else p.Settings.Add(new(key, text));
             }
 
@@ -148,7 +152,7 @@ public sealed class Importer(WindhawkCli cli)
                 p.InstalledVersion = current.Version;
                 await NoteLeftoverListItems(p);
                 if (current.Version != mod.Version)
-                    p.Notes.Add($"hai la versione {current.Version}, il pacchetto è stato creato con la {mod.Version}");
+                    p.Notes.Add($"you have version {current.Version}, the package was created with {mod.Version}");
             }
             else
             {
@@ -156,15 +160,15 @@ public sealed class Importer(WindhawkCli cli)
                 if (exactVersion && ImportValidation.IsValidVersion(mod.Version))
                     p.InstallVersion = mod.Version;
                 else if (repo.Version != mod.Version)
-                    p.Notes.Add($"verrà installata l'ultima versione ({repo.Version}), il pacchetto usa la {mod.Version}");
+                    p.Notes.Add($"the latest version ({repo.Version}) will be installed, the package uses {mod.Version}");
             }
         }
         return plan;
     }
 
     /// <summary>
-    /// Le liste vengono sovrascritte elemento per elemento: se la tua lista è più lunga di quella del
-    /// pacchetto, gli elementi in più restano. Lo si segnala nel piano.
+    /// Lists are overwritten item by item: if your list is longer than the package's,
+    /// the extra items stay. This is reported in the plan.
     /// </summary>
     private async Task NoteLeftoverListItems(PlannedMod p)
     {
@@ -181,11 +185,11 @@ public sealed class Importer(WindhawkCli cli)
         {
             var extra = current.Keys.Count(k => SettingsTools.RootOf(k) == root && !incomingKeys.Contains(k));
             if (extra > 0)
-                p.Notes.Add($"la tua lista '{root}' ha {extra} valori in più che resteranno invariati");
+                p.Notes.Add($"your list '{root}' has {extra} extra values that will be left unchanged");
         }
     }
 
-    /// <summary>Esegue il piano. Restituisce le righe di riepilogo.</summary>
+    /// <summary>Runs the plan. Returns the summary lines.</summary>
     public async Task<List<string>> ExecuteAsync(List<PlannedMod> plan, Action<string> progress)
     {
         var summary = new List<string>();
@@ -196,42 +200,44 @@ public sealed class Importer(WindhawkCli cli)
 
             if (p.Action == ModAction.Install)
             {
-                progress($"Installazione di {id}...");
+                progress($"Installing {id}...");
                 var r = await cli.InstallFromRepoAsync(id, p.InstallVersion, disabled: !p.Source.Enabled);
+                if (IsAccessDenied(r)) throw new AdminRequiredException();
                 if (r.ExitCode != CliExitCode.Success && r.ExitCode != CliExitCode.AlreadyInstalled)
                 {
-                    summary.Add($"ERRORE  {id}: installazione fallita ({WindhawkCli.ErrorText(r)})");
+                    summary.Add($"ERROR    {id}: installation failed ({WindhawkCli.ErrorText(r)})");
                     continue;
                 }
             }
 
             if (p.Settings.Count == 0)
             {
-                summary.Add($"ok      {id}");
+                summary.Add($"ok       {id}");
                 continue;
             }
 
-            progress($"Applicazione delle impostazioni di {id}...");
+            progress($"Applying settings for {id}...");
             var (applied, rejected) = await ApplySettingsAsync(id, p.Settings);
             summary.Add(rejected.Count == 0
-                ? $"ok      {id}: {applied} valori applicati"
-                : $"parz.   {id}: {applied} valori applicati, rifiutati da Windhawk: {string.Join(", ", rejected)}");
+                ? $"ok       {id}: {applied} values applied"
+                : $"partial  {id}: {applied} values applied, rejected by Windhawk: {string.Join(", ", rejected)}");
         }
         return summary;
     }
 
     /// <summary>
-    /// Prova ad applicare tutto insieme. Se Windhawk rifiuta (es. una chiave che non esiste più in questa
-    /// versione della mod), riprova gruppo per gruppo, così una sola chiave sbagliata non blocca il resto.
-    /// Un gruppo = un'impostazione di primo livello, quindi una lista resta sempre intera.
+    /// Tries to apply everything at once. If Windhawk rejects it (e.g. a key that no longer exists in
+    /// this version of the mod), it retries group by group, so one bad key doesn't block the rest.
+    /// A group = one top-level setting, so a list always stays whole.
     /// </summary>
     private async Task<(int Applied, List<string> RejectedRoots)> ApplySettingsAsync(
         string modId, List<KeyValuePair<string, string>> settings)
     {
         var all = await cli.SetSettingsAsync(modId, settings);
         if (all.ExitCode == CliExitCode.Success) return (settings.Count, new());
+        if (IsAccessDenied(all)) throw new AdminRequiredException();
         if (all.ExitCode != CliExitCode.UsageError)
-            throw new WindhawkCliException($"Impostazioni di {modId} non applicate ({WindhawkCli.ErrorText(all)})");
+            throw new WindhawkCliException($"Settings for {modId} were not applied ({WindhawkCli.ErrorText(all)})");
 
         var applied = 0;
         var rejected = new List<string>();
@@ -242,6 +248,27 @@ public sealed class Importer(WindhawkCli cli)
             else rejected.Add(group.Key);
         }
         return (applied, rejected);
+    }
+
+    /// <summary>
+    /// Windhawk writes to HKEY_LOCAL_MACHINE: without admin rights it fails with "access denied".
+    /// The OS message is localized, so a few languages are checked besides the error code.
+    /// </summary>
+    private static bool IsAccessDenied(CliResult r)
+    {
+        var text = r.Stdout + r.Stderr;
+        return text.Contains("\"osError\":5", StringComparison.Ordinal) ||
+               text.Contains("ERROR_ACCESS_DENIED", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Accesso negato", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsElevated()
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return new System.Security.Principal.WindowsPrincipal(identity)
+            .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     }
 
     private static string Truncate(string s) => s.Length <= 60 ? s : s[..60] + "...";
