@@ -1,4 +1,4 @@
-name: Compila windhawk-share
+name: Build windhawk-share
 
 on:
   push:
@@ -24,26 +24,26 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Compila la versione da terminale
+      - name: Build command-line version
         run: dotnet publish WindhawkShare.csproj -c Release -r ${{ matrix.rid }} -o publish/cli
 
-      - name: Compila la versione grafica
+      - name: Build GUI version
         run: dotnet publish gui/WindhawkShare.Gui.csproj -c Release -r ${{ matrix.rid }} -o publish/gui
 
-      - name: Rinomina per architettura
+      - name: Rename by architecture
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Move-Item publish/cli/windhawk-share.exe "dist/windhawk-share-${{ matrix.rid }}.exe"
           Move-Item publish/gui/windhawk-share-gui.exe "dist/windhawk-share-gui-${{ matrix.rid }}.exe"
 
-      - name: Carica gli eseguibili
+      - name: Upload executables
         uses: actions/upload-artifact@v4
         with:
           name: windhawk-share-${{ matrix.rid }}
           path: dist/*.exe
 
-      - name: Pubblica la release (solo per i tag v*)
+      - name: Publish release (v* tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
