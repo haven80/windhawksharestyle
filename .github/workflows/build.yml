@@ -1,0 +1,44 @@
+name: Compila windhawk-share
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        rid: [win-x64, win-arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compila
+        run: dotnet publish -c Release -r ${{ matrix.rid }} -o publish
+
+      - name: Rinomina per architettura
+        shell: pwsh
+        run: Move-Item publish/windhawk-share.exe "publish/windhawk-share-${{ matrix.rid }}.exe"
+
+      - name: Carica l'eseguibile
+        uses: actions/upload-artifact@v4
+        with:
+          name: windhawk-share-${{ matrix.rid }}
+          path: publish/windhawk-share-${{ matrix.rid }}.exe
+
+      - name: Pubblica la release (solo per i tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: publish/windhawk-share-${{ matrix.rid }}.exe
