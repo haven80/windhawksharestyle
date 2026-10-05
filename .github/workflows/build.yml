@@ -24,21 +24,27 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Compila
-        run: dotnet publish -c Release -r ${{ matrix.rid }} -o publish
+      - name: Compila la versione da terminale
+        run: dotnet publish WindhawkShare.csproj -c Release -r ${{ matrix.rid }} -o publish/cli
+
+      - name: Compila la versione grafica
+        run: dotnet publish gui/WindhawkShare.Gui.csproj -c Release -r ${{ matrix.rid }} -o publish/gui
 
       - name: Rinomina per architettura
         shell: pwsh
-        run: Move-Item publish/windhawk-share.exe "publish/windhawk-share-${{ matrix.rid }}.exe"
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Move-Item publish/cli/windhawk-share.exe "dist/windhawk-share-${{ matrix.rid }}.exe"
+          Move-Item publish/gui/windhawk-share-gui.exe "dist/windhawk-share-gui-${{ matrix.rid }}.exe"
 
-      - name: Carica l'eseguibile
+      - name: Carica gli eseguibili
         uses: actions/upload-artifact@v4
         with:
           name: windhawk-share-${{ matrix.rid }}
-          path: publish/windhawk-share-${{ matrix.rid }}.exe
+          path: dist/*.exe
 
       - name: Pubblica la release (solo per i tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/windhawk-share-${{ matrix.rid }}.exe
+          files: dist/*.exe
