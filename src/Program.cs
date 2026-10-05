@@ -173,7 +173,7 @@ static async Task<int> ImportCommand(WindhawkCli cli, Options options)
     // Le impostazioni di tipo testo possono contenere percorsi o comandi: si mostrano prima di applicarle.
     var suspicious = todo
         .SelectMany(p => p.Settings.Select(kv => (p.Source.Id, kv.Key, kv.Value)))
-        .Where(x => LooksLikePathOrCommand(x.Value))
+        .Where(x => ImportValidation.LooksLikePathOrCommand(x.Value))
         .ToList();
     if (suspicious.Count > 0)
     {
@@ -200,15 +200,6 @@ static async Task<int> ImportCommand(WindhawkCli cli, Options options)
     foreach (var line in summary) Console.WriteLine($"  {line}");
     return summary.Any(l => l.StartsWith("ERRORE")) ? 1 : 0;
 }
-
-static bool LooksLikePathOrCommand(string value) =>
-    value.Contains(":\\") || value.Contains("\\\\") || value.Contains('%') ||
-    value.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
-    value.Contains("https://", StringComparison.OrdinalIgnoreCase) ||
-    value.Contains(".exe", StringComparison.OrdinalIgnoreCase) ||
-    value.Contains(".ps1", StringComparison.OrdinalIgnoreCase) ||
-    value.Contains(".bat", StringComparison.OrdinalIgnoreCase) ||
-    value.Contains(".cmd", StringComparison.OrdinalIgnoreCase);
 
 static async Task<List<ModSelection>> InteractiveSelection(WindhawkCli cli, List<InstalledMod> installed)
 {

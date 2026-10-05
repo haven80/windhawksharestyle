@@ -52,6 +52,16 @@ public static class ImportValidation
         (char.IsAsciiLetterOrDigit(key[0]) || key[0] == '_') &&
         key.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '[' or ']' or '-' or '$');
 
+    /// <summary>Valori da mostrare all'utente prima di applicarli: percorsi, comandi, indirizzi web.</summary>
+    public static bool LooksLikePathOrCommand(string value) =>
+        value.Contains(":\\") || value.Contains("\\\\") || value.Contains('%') ||
+        value.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains("https://", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains(".exe", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains(".ps1", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains(".bat", StringComparison.OrdinalIgnoreCase) ||
+        value.Contains(".cmd", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Converte un valore nel testo atteso da "mod settings set". Null se non accettabile.</summary>
     public static string? ToCliValue(JsonElement value) => value.ValueKind switch
     {
