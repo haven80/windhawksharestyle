@@ -19,4 +19,11 @@
     <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- La GUI è un progetto separato nella cartella gui/ -->
+    <Compile Remove="gui/**" />
+    <None Remove="gui/**" />
+    <EmbeddedResource Remove="gui/**" />
+  </ItemGroup>
+
 </Project>
